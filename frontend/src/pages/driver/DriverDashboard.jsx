@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import {
   CheckCircle2,
   CloudUpload,
@@ -20,6 +21,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useDashboard, useTripActions, useTrips } from "../../hooks/useApi";
 import { money, nextTripStatus } from "../../utils/helpers";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { api } from "../../services/api";
+import { useQueryClient } from "@tanstack/react-query";
 
 const MAP_IMG =
   "https://lh3.googleusercontent.com/aida-public/AB6AXuAvgSFM7C9zxGI0dbL4BsG6SiX3I_nnO2z7wJ5f8A-e88-SUzPW9d2924TpCNo0r3lwpK23jWfi7AK_fCUpE9RtLQO8AV_btGaPvIELjHgW0bsRyT7VDvavzWBFUgXJTVyxhL14simHhF44emgfmJecOnJpoxrwc6VF3N0xvPNsNpdqyszT6RjVT1wnQLSw4yBRHYeNaaBwwkL74h3xPY5mVcg1sd4K0S2jNAcSea7CEpXe7IZ6y5S_gBeEklkvRoJBnOMcoKi1kfE";
@@ -29,17 +32,41 @@ export function DriverDashboard() {
   const { data: stats } = useDashboard();
   const { data: trips } = useTrips();
   const actions = useTripActions();
+  const fileRef = useRef(null);
+  const qc = useQueryClient();
+  const [podMessage, setPodMessage] = useState("");
   const jobs = trips?.data || [];
   const active = jobs.filter((t) => !["Delivered", "Cancelled"].includes(t.status));
   const live = active[0];
   const firstName = (user?.name || "Driver").split(" ")[0];
 
+  async function uploadPod(event) {
+    const file = event.target.files?.[0];
+    if (!file || !live) return;
+    const formData = new FormData();
+    formData.append("proof", file);
+    try {
+      await api.uploadProof(live.id, formData);
+      setPodMessage(`Proof uploaded for ${live.id}`);
+      qc.invalidateQueries({ queryKey: ["trips"] });
+    } catch (err) {
+      setPodMessage(err.message);
+    }
+    event.target.value = "";
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Driver Dashboard"
+        title="Driver Account"
         subtitle={`Welcome back, ${firstName}. You have ${active.length} ${active.length === 1 ? "delivery" : "deliveries"} scheduled.`}
       />
+
+      {podMessage && (
+        <p className="rounded-xl border border-primary-fixed bg-primary-fixed/40 px-4 py-3 text-sm text-primary-container">
+          {podMessage}
+        </p>
+      )}
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <CenterMetric
@@ -235,12 +262,23 @@ export function DriverDashboard() {
             actions.updateStatus.mutate({ id: live.id, status: nextTripStatus(live.status) });
           }}
         />
-        <QuickAction icon={CloudUpload} label="Upload POD" />
+        <QuickAction
+          icon={CloudUpload}
+          label="Upload POD"
+          onClick={() => {
+            if (!live) {
+              setPodMessage("No active job to upload proof for.");
+              return;
+            }
+            fileRef.current?.click();
+          }}
+        />
         <QuickAction icon={Headphones} label="Call Dispatcher" />
         <Link to={live ? `/driver/jobs` : "/driver/truck"}>
           <QuickAction icon={Info} label="View Details" asDiv />
         </Link>
       </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadPod} />
     </div>
   );
 }

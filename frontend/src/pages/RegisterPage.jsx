@@ -8,45 +8,83 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { roleHome } from "../utils/helpers";
 
 export function RegisterPage() {
-  const { register: registerUser, isAuthenticated, user } = useAuth();
+  const { register: registerUser, verifyRegister, resendCode, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [step, setStep] = useState("form");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [info, setInfo] = useState("");
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { isSubmitting }
   } = useForm({
     defaultValues: {
       role: "customer",
       truckType: "Box Truck",
-      capacity: "12 tons"
+      capacity: "12 tons",
+      code: ""
     }
   });
   const role = watch("role");
 
   if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
 
-  async function onSubmit(values) {
+  function buildPayload(values) {
+    const payload = {
+      name: values.name,
+      email: values.email,
+      password: values.password,
+      role: values.role,
+      phone: values.phone || undefined
+    };
+    if (values.role === "driver") {
+      payload.truck = {
+        truckNumber: values.truckNumber,
+        plateNumber: values.plateNumber,
+        capacity: values.capacity,
+        truckType: values.truckType
+      };
+    }
+    return payload;
+  }
+
+  async function onSubmitForm(values) {
+    setError("");
+    setInfo("");
+    try {
+      const payload = buildPayload(values);
+      const result = await registerUser(payload);
+      if (result.verificationRequired) {
+        setPendingEmail(values.email);
+        setStep("verify");
+        setInfo(result.message);
+        setValue("code", "");
+        return;
+      }
+      navigate(roleHome(result.user.role));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function onSubmitCode(values) {
     setError("");
     try {
-      const payload = {
-        name: values.name,
-        email: values.email,
-        password: values.password,
-        role: values.role,
-        phone: values.phone || undefined
-      };
-      if (values.role === "driver") {
-        payload.truck = {
-          truckNumber: values.truckNumber,
-          plateNumber: values.plateNumber,
-          capacity: values.capacity,
-          truckType: values.truckType
-        };
-      }
-      const result = await registerUser(payload);
+      const result = await verifyRegister({ email: pendingEmail, code: values.code });
       navigate(roleHome(result.user.role));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function onResend() {
+    setError("");
+    try {
+      const result = await resendCode({ email: pendingEmail, purpose: "register" });
+      setInfo(result.message);
     } catch (err) {
       setError(err.message);
     }
@@ -71,7 +109,7 @@ export function RegisterPage() {
           </Link>
           <h1 className="text-4xl font-bold leading-tight md:text-5xl">Join the cargo marketplace</h1>
           <p className="mt-4 max-w-md text-on-primary-container">
-            Customers book loads, drivers register with one truck, and dispatchers coordinate the corridor in real time.
+            We email you a verification code to confirm your address before creating your account.
           </p>
           <ul className="mt-8 space-y-3 text-sm text-on-primary-container">
             <li>• PostgreSQL-backed trips, payments, and notifications</li>
@@ -81,49 +119,89 @@ export function RegisterPage() {
         </div>
 
         <div className="auth-card p-6 md:p-8">
-          <h2 className="text-2xl font-bold text-primary">Create account</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Drivers must register with exactly one truck.</p>
+          {step === "form" ? (
+            <>
+              <h2 className="text-2xl font-bold text-primary">Create account</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Drivers must register with exactly one truck.</p>
 
-          <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-            <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
-            <Field label="Phone"><input className="stitch-input" {...register("phone")} /></Field>
-            <Field label="Email" className="sm:col-span-2">
-              <input className="stitch-input" type="email" {...register("email", { required: true })} />
-            </Field>
-            <Field label="Password">
-              <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
-            </Field>
-            <Field label="Role">
-              <select className="stitch-input" {...register("role")}>
-                <option value="customer">Customer</option>
-                <option value="driver">Driver (+ Truck)</option>
-                <option value="dispatcher">Dispatcher</option>
-              </select>
-            </Field>
-
-            {role === "driver" && (
-              <>
-                <Field label="Truck number"><input className="stitch-input" {...register("truckNumber", { required: true })} /></Field>
-                <Field label="Plate number"><input className="stitch-input" {...register("plateNumber", { required: true })} /></Field>
-                <Field label="Capacity"><input className="stitch-input" {...register("capacity", { required: true })} /></Field>
-                <Field label="Truck type">
-                  <select className="stitch-input" {...register("truckType")}>
-                    <option>Box Truck</option>
-                    <option>Flatbed</option>
-                    <option>Refrigerated</option>
-                    <option>Tanker</option>
+              <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmitForm)}>
+                <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
+                <Field label="Phone"><input className="stitch-input" {...register("phone")} /></Field>
+                <Field label="Email" className="sm:col-span-2">
+                  <input className="stitch-input" type="email" {...register("email", { required: true })} />
+                </Field>
+                <Field label="Password">
+                  <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
+                </Field>
+                <Field label="Role">
+                  <select className="stitch-input" {...register("role")}>
+                    <option value="customer">Customer</option>
+                    <option value="driver">Driver (+ Truck)</option>
+                    <option value="dispatcher">Dispatcher</option>
                   </select>
                 </Field>
-              </>
-            )}
 
-            {error && <p className="sm:col-span-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
-            <div className="sm:col-span-2">
+                {role === "driver" && (
+                  <>
+                    <Field label="Truck number"><input className="stitch-input" {...register("truckNumber", { required: true })} /></Field>
+                    <Field label="Plate number"><input className="stitch-input" {...register("plateNumber", { required: true })} /></Field>
+                    <Field label="Capacity"><input className="stitch-input" {...register("capacity", { required: true })} /></Field>
+                    <Field label="Truck type">
+                      <select className="stitch-input" {...register("truckType")}>
+                        <option>Box Truck</option>
+                        <option>Flatbed</option>
+                        <option>Refrigerated</option>
+                        <option>Tanker</option>
+                      </select>
+                    </Field>
+                  </>
+                )}
+
+                {error && <p className="sm:col-span-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
+                <div className="sm:col-span-2">
+                  <Button className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? "Sending code…" : "Send verification code"}
+                  </Button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <form className="space-y-4" onSubmit={handleSubmit(onSubmitCode)}>
+              <div>
+                <h2 className="text-2xl font-bold text-primary">Verify your email</h2>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Enter the 6-digit code sent to <strong>{pendingEmail}</strong>
+                </p>
+              </div>
+              <label className="block text-sm">
+                <span className="mb-1.5 block font-medium text-on-surface-variant">Verification code</span>
+                <input
+                  className="stitch-input text-center text-lg tracking-[0.4em]"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  {...register("code", { required: true, minLength: 6, maxLength: 6 })}
+                />
+              </label>
+              {info && <p className="rounded-lg bg-secondary-fixed/40 px-3 py-2 text-sm text-on-surface">{info}</p>}
+              {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
               <Button className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Creating…" : "Create account"}
+                {isSubmitting ? "Creating account…" : "Verify & create account"}
               </Button>
-            </div>
-          </form>
+              <div className="flex items-center justify-between text-sm">
+                <button
+                  type="button"
+                  className="font-semibold text-on-surface-variant hover:underline"
+                  onClick={() => { setStep("form"); setError(""); setInfo(""); }}
+                >
+                  Back
+                </button>
+                <button type="button" className="font-semibold text-secondary-container hover:underline" onClick={onResend}>
+                  Resend code
+                </button>
+              </div>
+            </form>
+          )}
 
           <p className="mt-6 text-center text-sm text-on-surface-variant">
             Already registered?{" "}

@@ -34,8 +34,18 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   async function quick(email) {
-    const result = await login({ email, password: DEMO_PASSWORD });
-    navigate(roleHome(result.user.role));
+    try {
+      const result = await login({ email, password: DEMO_PASSWORD });
+      if (result.verificationRequired) {
+        navigate("/login", {
+          state: { email, password: DEMO_PASSWORD, step: "verify" }
+        });
+        return;
+      }
+      navigate(roleHome(result.user.role));
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   return (

@@ -1,7 +1,16 @@
 import bcrypt from "bcryptjs";
-import { query, withTransaction } from "../config/db.js";
+import { prisma } from "../lib/prisma.js";
 
 const DEMO_PASSWORD = "Password123!";
+
+// ─── Status mapping helpers ──────────────────────────────────────────
+// Prisma enum values use underscores; the API uses spaces.
+const tripStatusToDb = (s) => (s ? s.replace(/ /g, "_") : s);
+const tripStatusToApi = (s) => (s ? s.replace(/_/g, " ") : s);
+const reqStatusToDb = (s) => (s ? s.replace(/ /g, "_") : s);
+const reqStatusToApi = (s) => (s ? s.replace(/_/g, " ") : s);
+
+// ─── Mappers ─────────────────────────────────────────────────────────
 
 function mapUser(row) {
   if (!row) return null;
@@ -12,12 +21,12 @@ function mapUser(row) {
     role: row.role,
     phone: row.phone,
     status: row.status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    truckId: row.truck_id || null,
-    truckNumber: row.truck_number || null,
-    plateNumber: row.plate_number || null,
-    truckStatus: row.truck_status || null
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    truckId: row.truck?.id || null,
+    truckNumber: row.truck?.truckNumber || null,
+    plateNumber: row.truck?.plateNumber || null,
+    truckStatus: row.truck?.status || null,
   };
 }
 
@@ -25,16 +34,16 @@ function mapTruck(row) {
   if (!row) return null;
   return {
     id: row.id,
-    truckNumber: row.truck_number,
-    plateNumber: row.plate_number,
+    truckNumber: row.truckNumber,
+    plateNumber: row.plateNumber,
     capacity: row.capacity,
-    type: row.truck_type,
-    truckType: row.truck_type,
-    driverId: row.driver_id,
-    driver: row.driver_name,
+    type: row.truckType,
+    truckType: row.truckType,
+    driverId: row.driverId,
+    driver: row.driver?.name || null,
     status: row.status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -42,29 +51,31 @@ function mapCargoRequest(row) {
   if (!row) return null;
   return {
     id: row.id,
-    customerId: row.customer_id,
-    customer: row.customer_name,
+    customerId: row.customerId,
+    customer: row.customer?.name || null,
     pickup: row.pickup,
     destination: row.destination,
     from: row.pickup,
     to: row.destination,
-    truckType: row.truck_type,
+    truckType: row.truckType,
     weight: row.weight,
     description: row.description,
     cargo: row.description,
     receiver: row.receiver,
     sender: row.sender,
-    specialInstructions: row.special_instructions,
-    status: row.status,
-    driverId: row.driver_id,
-    driver: row.driver_name,
-    truckId: row.truck_id,
-    truck: row.truck_number,
-    dispatcherId: row.dispatcher_id,
-    dispatcher: row.dispatcher_name,
-    date: row.created_at ? new Date(row.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    specialInstructions: row.specialInstructions,
+    status: reqStatusToApi(row.status),
+    driverId: row.driverId,
+    driver: row.driver?.name || null,
+    truckId: row.truckId,
+    truck: row.truck?.truckNumber || null,
+    dispatcherId: row.dispatcherId,
+    dispatcher: row.dispatcher?.name || null,
+    date: row.createdAt
+      ? new Date(row.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+      : null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -72,32 +83,32 @@ function mapTrip(row) {
   if (!row) return null;
   return {
     id: row.id,
-    cargoRequestId: row.cargo_request_id,
-    customerId: row.customer_id,
-    customer: row.customer_name,
-    driverId: row.driver_id,
-    driver: row.driver_name,
-    dispatcherId: row.dispatcher_id,
-    dispatcher: row.dispatcher_name,
-    truckId: row.truck_id,
-    truck: row.truck_number,
+    cargoRequestId: row.cargoRequestId,
+    customerId: row.customerId,
+    customer: row.customer?.name || null,
+    driverId: row.driverId,
+    driver: row.driver?.name || null,
+    dispatcherId: row.dispatcherId,
+    dispatcher: row.dispatcher?.name || null,
+    truckId: row.truckId,
+    truck: row.truck?.truckNumber || null,
     pickup: row.pickup,
     destination: row.destination,
     route: `${row.pickup} -> ${row.destination}`,
     distance: row.distance,
-    estimatedTime: row.estimated_time,
-    eta: row.estimated_time,
-    status: row.status,
+    estimatedTime: row.estimatedTime,
+    eta: row.estimatedTime,
+    status: tripStatusToApi(row.status),
     fare: Number(row.fare || 0),
-    cargo: row.description || row.cargo_description || "Cargo",
-    deliveryProofUrl: row.delivery_proof_url,
-    signatureUrl: row.signature_url,
+    cargo: row.cargoRequest?.description || "Cargo",
+    deliveryProofUrl: row.deliveryProofUrl,
+    signatureUrl: row.signatureUrl,
     lastLocation:
-      row.last_lat != null
-        ? { lat: row.last_lat, lng: row.last_lng, updatedAt: row.last_location_at }
+      row.lastLat != null
+        ? { lat: row.lastLat, lng: row.lastLng, updatedAt: row.lastLocationAt }
         : null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -105,85 +116,81 @@ function mapNotification(row) {
   if (!row) return null;
   return {
     id: row.id,
-    userId: row.user_id,
+    userId: row.userId,
     type: row.type,
     message: row.message,
     read: row.read,
-    createdAt: row.created_at
+    createdAt: row.createdAt,
   };
 }
 
-async function createNotification(clientOrNull, { userId = null, type, message }) {
-  const runner = clientOrNull || { query };
-  const result = await runner.query(
-    `INSERT INTO notifications (user_id, type, message)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
-    [userId, type, message]
-  );
-  return mapNotification(result.rows[0]);
-}
+// ─── Include helpers ─────────────────────────────────────────────────
 
-async function writeAudit(client, { actorId = null, action, entity = null, entityId = null, meta = {} }) {
-  await client.query(
-    `INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta)
-     VALUES ($1, $2, $3, $4, $5::jsonb)`,
-    [actorId, action, entity, entityId, JSON.stringify(meta)]
-  );
-}
+const userInclude = { truck: true };
+
+const cargoRequestInclude = {
+  customer: true,
+  driver: true,
+  dispatcher: true,
+  truck: true,
+};
+
+const tripInclude = {
+  customer: true,
+  driver: true,
+  dispatcher: true,
+  truck: true,
+  cargoRequest: true,
+};
+
+// ─── DB Service ──────────────────────────────────────────────────────
+
+export { prisma } from "../lib/prisma.js";
 
 export const db = {
   async seedIfEmpty() {
-    const existing = await query("SELECT COUNT(*)::int AS count FROM users");
-    if (existing.rows[0].count > 0) return { seeded: false };
+    const count = await prisma.user.count();
+    if (count > 0) return { seeded: false };
 
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
 
-    await withTransaction(async (client) => {
+    try {
+      await prisma.$transaction(async (tx) => {
       const roles = [
-        ["System Admin", "admin@truckdispatch.local", "admin", "+10000000001"],
-        ["Alex Thompson", "dispatcher@truckdispatch.local", "dispatcher", "+10000000002"],
-        ["Retail Solutions", "customer@truckdispatch.local", "customer", "+10000000003"],
-        ["Mike Driver", "driver@truckdispatch.local", "driver", "+10000000004"],
-        ["Sarah Miller", "driver2@truckdispatch.local", "driver", "+10000000005"],
-        ["Robert Brown", "driver3@truckdispatch.local", "driver", "+10000000006"]
+        { name: "System Admin", email: "admin@truckdispatch.local", role: "admin", phone: "+10000000001" },
+        { name: "Alex Thompson", email: "dispatcher@truckdispatch.local", role: "dispatcher", phone: "+10000000002" },
+        { name: "Retail Solutions", email: "customer@truckdispatch.local", role: "customer", phone: "+10000000003" },
+        { name: "Mike Driver", email: "driver@truckdispatch.local", role: "driver", phone: "+10000000004" },
+        { name: "Sarah Miller", email: "driver2@truckdispatch.local", role: "driver", phone: "+10000000005" },
+        { name: "Robert Brown", email: "driver3@truckdispatch.local", role: "driver", phone: "+10000000006" },
       ];
 
       const userIds = {};
-      for (const [name, email, role, phone] of roles) {
-        const result = await client.query(
-          `INSERT INTO users (name, email, password_hash, role, phone)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, role, email`,
-          [name, email, passwordHash, role, phone]
-        );
-        userIds[email] = result.rows[0].id;
+      for (const { name, email, role, phone } of roles) {
+        const user = await tx.user.create({ data: { name, email, passwordHash, role, phone } });
+        userIds[email] = user.id;
       }
 
       for (const name of ["Box Truck", "Flatbed", "Refrigerated", "Tanker"]) {
-        await client.query(
-          `INSERT INTO truck_types (name, description)
-           VALUES ($1, $2)
-           ON CONFLICT (name) DO NOTHING`,
-          [name, `${name} category`]
-        );
+        await tx.truckType.upsert({
+          where: { name },
+          update: {},
+          create: { name, description: `${name} category` },
+        });
       }
 
       const truckDefs = [
-        ["Freightliner #82", "TX-82-LC", "12 tons", "Box Truck", "driver@truckdispatch.local", "Busy"],
-        ["Peterbilt #45", "GA-45-FL", "18 tons", "Flatbed", "driver2@truckdispatch.local", "Available"],
-        ["Kenworth #12", "AZ-12-KW", "10 tons", "Refrigerated", "driver3@truckdispatch.local", "Maintenance"]
+        { truckNumber: "Freightliner #82", plateNumber: "TX-82-LC", capacity: "12 tons", truckType: "Box Truck", driverEmail: "driver@truckdispatch.local", status: "Busy" },
+        { truckNumber: "Peterbilt #45", plateNumber: "GA-45-FL", capacity: "18 tons", truckType: "Flatbed", driverEmail: "driver2@truckdispatch.local", status: "Available" },
+        { truckNumber: "Kenworth #12", plateNumber: "AZ-12-KW", capacity: "10 tons", truckType: "Refrigerated", driverEmail: "driver3@truckdispatch.local", status: "Maintenance" },
       ];
 
       const truckIds = {};
-      for (const [truckNumber, plate, capacity, type, email, status] of truckDefs) {
-        const result = await client.query(
-          `INSERT INTO trucks (truck_number, plate_number, capacity, truck_type, driver_id, status)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id, truck_number`,
-          [truckNumber, plate, capacity, type, userIds[email], status]
-        );
-        truckIds[email] = result.rows[0];
+      for (const { truckNumber, plateNumber, capacity, truckType, driverEmail, status } of truckDefs) {
+        const truck = await tx.truck.create({
+          data: { truckNumber, plateNumber, capacity, truckType, driverId: userIds[driverEmail], status },
+        });
+        truckIds[driverEmail] = { id: truck.id, truckNumber: truck.truckNumber };
       }
 
       const customerId = userIds["customer@truckdispatch.local"];
@@ -192,152 +199,143 @@ export const db = {
       const driver2 = userIds["driver2@truckdispatch.local"];
 
       const requests = [
-        ["REQ-9012", "New York", "Chicago", "Box Truck", "1.4 tons", "Electronics", "Pending"],
-        ["REQ-9013", "Dallas", "Houston", "Flatbed", "2.1 tons", "Furniture", "Pending"],
-        ["REQ-9014", "Atlanta", "Miami", "Refrigerated", "4.0 tons", "Beverages", "Pending"],
-        ["REQ-9015", "Seattle", "Portland", "Box Truck", "0.8 tons", "Food Items", "Assigned"]
+        { id: "REQ-9012", pickup: "New York", destination: "Chicago", truckType: "Box Truck", weight: "1.4 tons", description: "Electronics", status: "Pending" },
+        { id: "REQ-9013", pickup: "Dallas", destination: "Houston", truckType: "Flatbed", weight: "2.1 tons", description: "Furniture", status: "Pending" },
+        { id: "REQ-9014", pickup: "Atlanta", destination: "Miami", truckType: "Refrigerated", weight: "4.0 tons", description: "Beverages", status: "Pending" },
+        { id: "REQ-9015", pickup: "Seattle", destination: "Portland", truckType: "Box Truck", weight: "0.8 tons", description: "Food Items", status: "Assigned" },
       ];
 
-      for (const [id, pickup, destination, truckType, weight, description, status] of requests) {
-        await client.query(
-          `INSERT INTO cargo_requests
-            (id, customer_id, pickup, destination, truck_type, weight, description, sender, receiver, status, driver_id, truck_id, dispatcher_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [
-            id,
+      for (const req of requests) {
+        await tx.cargoRequest.create({
+          data: {
+            id: req.id,
             customerId,
-            pickup,
-            destination,
-            truckType,
-            weight,
-            description,
-            "Retail Solutions",
-            "Warehouse Desk",
-            status,
-            status === "Assigned" ? driver2 : null,
-            status === "Assigned" ? truckIds["driver2@truckdispatch.local"].id : null,
-            status === "Assigned" ? dispatcherId : null
-          ]
-        );
+            pickup: req.pickup,
+            destination: req.destination,
+            truckType: req.truckType,
+            weight: req.weight,
+            description: req.description,
+            sender: "Retail Solutions",
+            receiver: "Warehouse Desk",
+            status: reqStatusToDb(req.status),
+            driverId: req.status === "Assigned" ? driver2 : null,
+            truckId: req.status === "Assigned" ? truckIds["driver2@truckdispatch.local"].id : null,
+            dispatcherId: req.status === "Assigned" ? dispatcherId : null,
+          },
+        });
       }
 
-      await client.query(
-        `INSERT INTO trips
-          (id, cargo_request_id, customer_id, driver_id, dispatcher_id, truck_id, pickup, destination, distance, estimated_time, status, fare, last_lat, last_lng, last_location_at)
-         VALUES
-          ('SHP-1001', NULL, $1, $2, $3, $4, 'Chicago, IL', 'Houston, TX', '1,084 mi', '18h 45m', 'In Transit', 2450, 41.5, -87.6, NOW()),
-          ('SHP-1003', NULL, $1, $5, $3, $6, 'Atlanta, GA', 'Miami, FL', '662 mi', '10h 20m', 'Delayed', 1890, 25.7, -80.2, NOW()),
-          ('SHP-10294', 'REQ-9015', $1, $5, $3, $6, 'Chicago, IL', 'New York, NY', '790 mi', '12h 30m', 'In Transit', 2100, 41.4, -81.7, NOW())`,
-        [
-          customerId,
-          driver1,
-          dispatcherId,
-          truckIds["driver@truckdispatch.local"].id,
-          driver2,
-          truckIds["driver2@truckdispatch.local"].id
-        ]
-      );
-
-      await client.query(
-        `INSERT INTO payments (trip_id, customer_id, amount, status, method)
-         VALUES
-           ('SHP-1001', $1, 2450, 'Paid', 'card'),
-           ('SHP-1003', $1, 1890, 'Pending', 'card'),
-           ('SHP-10294', $1, 2100, 'Paid', 'card')`,
-        [customerId]
-      );
-
-      await client.query(
-        `INSERT INTO settings (key, value)
-         VALUES
-           ('general', '{"companyName":"TruckDispatch","supportEmail":"support@truckdispatch.local","currency":"USD"}'::jsonb),
-           ('notifications', '{"email":true,"sms":false,"push":true}'::jsonb)
-         ON CONFLICT (key) DO NOTHING`
-      );
-
-      await createNotification(client, {
-        userId: dispatcherId,
-        type: "order.created",
-        message: "New cargo request REQ-9012 created"
+      await tx.trip.createMany({
+        data: [
+          {
+            id: "SHP-1001", customerId, driverId: driver1, dispatcherId,
+            truckId: truckIds["driver@truckdispatch.local"].id,
+            pickup: "Chicago, IL", destination: "Houston, TX",
+            distance: "1,084 mi", estimatedTime: "18h 45m",
+            status: "In_Transit", fare: 2450,
+            lastLat: 41.5, lastLng: -87.6, lastLocationAt: new Date(),
+          },
+          {
+            id: "SHP-1003", customerId, driverId: driver2, dispatcherId,
+            truckId: truckIds["driver2@truckdispatch.local"].id,
+            pickup: "Atlanta, GA", destination: "Miami, FL",
+            distance: "662 mi", estimatedTime: "10h 20m",
+            status: "Delayed", fare: 1890,
+            lastLat: 25.7, lastLng: -80.2, lastLocationAt: new Date(),
+          },
+          {
+            id: "SHP-10294", cargoRequestId: "REQ-9015", customerId,
+            driverId: driver2, dispatcherId,
+            truckId: truckIds["driver2@truckdispatch.local"].id,
+            pickup: "Chicago, IL", destination: "New York, NY",
+            distance: "790 mi", estimatedTime: "12h 30m",
+            status: "In_Transit", fare: 2100,
+            lastLat: 41.4, lastLng: -81.7, lastLocationAt: new Date(),
+          },
+        ],
       });
-      await createNotification(client, {
-        userId: driver1,
-        type: "driver.assigned",
-        message: "SHP-1001 assigned to Mike Driver"
+
+      await tx.payment.createMany({
+        data: [
+          { tripId: "SHP-1001", customerId, amount: 2450, status: "Paid", method: "card" },
+          { tripId: "SHP-1003", customerId, amount: 1890, status: "Pending", method: "card" },
+          { tripId: "SHP-10294", customerId, amount: 2100, status: "Paid", method: "card" },
+        ],
       });
-      await createNotification(client, {
-        userId: customerId,
-        type: "cargo.delivered",
-        message: "Previous shipment delivered successfully"
+
+      await tx.setting.createMany({
+        data: [
+          { key: "general", value: { companyName: "TruckDispatch", supportEmail: "support@truckdispatch.local", currency: "USD" } },
+          { key: "notifications", value: { email: true, sms: false, push: true } },
+        ],
       });
-    });
+
+      await tx.notification.createMany({
+        data: [
+          { userId: dispatcherId, type: "order.created", message: "New cargo request REQ-9012 created" },
+          { userId: driver1, type: "driver.assigned", message: "SHP-1001 assigned to Mike Driver" },
+          { userId: customerId, type: "cargo.delivered", message: "Previous shipment delivered successfully" },
+        ],
+      });
+    }, { timeout: 60_000, maxWait: 15_000 });
+    } catch (error) {
+      const exists = await prisma.user.count();
+      if (exists > 0) return { seeded: false };
+      throw error;
+    }
 
     return { seeded: true, demoPassword: DEMO_PASSWORD };
   },
 
+  // ── Users ────────────────────────────────────────────────────────
+
   async findUserByEmail(email) {
-    const result = await query(
-      `SELECT u.*, t.id AS truck_id, t.truck_number, t.plate_number, t.status AS truck_status
-       FROM users u
-       LEFT JOIN trucks t ON t.driver_id = u.id
-       WHERE LOWER(u.email) = LOWER($1)`,
-      [email]
-    );
-    const row = result.rows[0];
+    const row = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      include: userInclude,
+    });
     if (!row) return null;
-    return { ...mapUser(row), passwordHash: row.password_hash };
+    return { ...mapUser(row), passwordHash: row.passwordHash };
   },
 
   async findUserById(id) {
-    const result = await query(
-      `SELECT u.*, t.id AS truck_id, t.truck_number, t.plate_number, t.status AS truck_status
-       FROM users u
-       LEFT JOIN trucks t ON t.driver_id = u.id
-       WHERE u.id = $1`,
-      [id]
-    );
-    return mapUser(result.rows[0]);
+    const row = await prisma.user.findUnique({
+      where: { id },
+      include: userInclude,
+    });
+    return mapUser(row);
   },
 
   async listUsers({ role, search, page = 1, limit = 50 } = {}) {
-    const clauses = [];
-    const params = [];
-    if (role) {
-      params.push(role);
-      clauses.push(`u.role = $${params.length}`);
-    }
+    const where = {};
+    if (role) where.role = role;
     if (search) {
-      params.push(`%${search}%`);
-      clauses.push(`(u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
     }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const offset = (Number(page) - 1) * Number(limit);
-    params.push(Number(limit), offset);
-    const result = await query(
-      `SELECT u.*, t.id AS truck_id, t.truck_number, t.plate_number, t.status AS truck_status
-       FROM users u
-       LEFT JOIN trucks t ON t.driver_id = u.id
-       ${where}
-       ORDER BY u.created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    );
-    const countResult = await query(
-      `SELECT COUNT(*)::int AS total FROM users u ${where}`,
-      params.slice(0, params.length - 2)
-    );
-    return { data: result.rows.map(mapUser), total: countResult.rows[0].total, page: Number(page) };
+    const [data, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        include: userInclude,
+        orderBy: { createdAt: "desc" },
+        take: Number(limit),
+        skip: offset,
+      }),
+      prisma.user.count({ where }),
+    ]);
+    return { data: data.map(mapUser), total, page: Number(page) };
   },
 
   async createUser({ name, email, password, role, phone, truck }) {
-    return withTransaction(async (client) => {
+    return prisma.$transaction(async (tx) => {
       const passwordHash = await bcrypt.hash(password, 10);
-      const userResult = await client.query(
-        `INSERT INTO users (name, email, password_hash, role, phone)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [name, email, passwordHash, role, phone || null]
-      );
+      const user = await tx.user.create({
+        data: { name, email, passwordHash, role, phone: phone || null },
+      });
+
       let truckRow = null;
       if (role === "driver") {
         if (!truck?.truckNumber || !truck?.plateNumber || !truck?.capacity || !truck?.truckType) {
@@ -345,581 +343,492 @@ export const db = {
           error.status = 400;
           throw error;
         }
-        const truckResult = await client.query(
-          `INSERT INTO trucks (truck_number, plate_number, capacity, truck_type, driver_id, status)
-           VALUES ($1, $2, $3, $4, $5, 'Available')
-           RETURNING *`,
-          [truck.truckNumber, truck.plateNumber, truck.capacity, truck.truckType, userResult.rows[0].id]
-        );
-        truckRow = truckResult.rows[0];
+        truckRow = await tx.truck.create({
+          data: {
+            truckNumber: truck.truckNumber,
+            plateNumber: truck.plateNumber,
+            capacity: truck.capacity,
+            truckType: truck.truckType,
+            driverId: user.id,
+            status: "Available",
+          },
+        });
       }
-      await writeAudit(client, {
-        actorId: userResult.rows[0].id,
-        action: "user.created",
-        entity: "users",
-        entityId: userResult.rows[0].id,
-        meta: { role }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          action: "user.created",
+          entity: "users",
+          entityId: user.id,
+          meta: { role },
+        },
       });
-      return {
-        ...mapUser({
-          ...userResult.rows[0],
-          truck_id: truckRow?.id,
-          truck_number: truckRow?.truck_number,
-          plate_number: truckRow?.plate_number,
-          truck_status: truckRow?.status
-        })
-      };
+
+      return mapUser({ ...user, truck: truckRow });
     });
   },
 
   async updateUser(id, payload) {
-    const fields = [];
-    const params = [];
-    for (const [key, column] of [
-      ["name", "name"],
-      ["email", "email"],
-      ["phone", "phone"],
-      ["status", "status"],
-      ["role", "role"]
-    ]) {
-      if (payload[key] !== undefined) {
-        params.push(payload[key]);
-        fields.push(`${column} = $${params.length}`);
-      }
+    const data = {};
+    if (payload.name !== undefined) data.name = payload.name;
+    if (payload.email !== undefined) data.email = payload.email;
+    if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.status !== undefined) data.status = payload.status;
+    if (payload.role !== undefined) data.role = payload.role;
+    if (payload.password) data.passwordHash = await bcrypt.hash(payload.password, 10);
+
+    if (Object.keys(data).length > 0) {
+      await prisma.user.update({ where: { id }, data });
     }
-    if (payload.password) {
-      params.push(await bcrypt.hash(payload.password, 10));
-      fields.push(`password_hash = $${params.length}`);
-    }
-    if (!fields.length) return this.findUserById(id);
-    params.push(id);
-    await query(
-      `UPDATE users SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
-      params
-    );
     return this.findUserById(id);
   },
 
   async deleteUser(id) {
-    return withTransaction(async (client) => {
-      await client.query(`UPDATE audit_logs SET actor_id = NULL WHERE actor_id = $1`, [id]);
-      const result = await client.query(`DELETE FROM users WHERE id = $1 RETURNING id`, [id]);
-      return Boolean(result.rowCount);
+    return prisma.$transaction(async (tx) => {
+      await tx.auditLog.updateMany({
+        where: { actorId: id },
+        data: { actorId: null },
+      });
+      const result = await tx.user.deleteMany({ where: { id } });
+      return result.count > 0;
     });
   },
 
+  // ── Trucks ───────────────────────────────────────────────────────
+
   async listTrucks({ status, page = 1, limit = 50 } = {}) {
-    const params = [];
-    const clauses = [];
-    if (status) {
-      params.push(status);
-      clauses.push(`t.status = $${params.length}`);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const where = {};
+    if (status) where.status = status;
     const offset = (Number(page) - 1) * Number(limit);
-    params.push(Number(limit), offset);
-    const result = await query(
-      `SELECT t.*, u.name AS driver_name
-       FROM trucks t
-       JOIN users u ON u.id = t.driver_id
-       ${where}
-       ORDER BY t.created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    );
-    const countResult = await query(
-      `SELECT COUNT(*)::int AS total FROM trucks t ${where}`,
-      params.slice(0, params.length - 2)
-    );
-    return { data: result.rows.map(mapTruck), total: countResult.rows[0].total, page: Number(page) };
+    const [data, total] = await Promise.all([
+      prisma.truck.findMany({
+        where,
+        include: { driver: true },
+        orderBy: { createdAt: "desc" },
+        take: Number(limit),
+        skip: offset,
+      }),
+      prisma.truck.count({ where }),
+    ]);
+    return { data: data.map(mapTruck), total, page: Number(page) };
   },
 
   async createTruck(payload) {
-    const result = await query(
-      `INSERT INTO trucks (truck_number, plate_number, capacity, truck_type, driver_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [
-        payload.truckNumber,
-        payload.plateNumber,
-        payload.capacity,
-        payload.truckType || payload.type,
-        payload.driverId,
-        payload.status || "Available"
-      ]
-    );
-    const joined = await query(
-      `SELECT t.*, u.name AS driver_name FROM trucks t JOIN users u ON u.id = t.driver_id WHERE t.id = $1`,
-      [result.rows[0].id]
-    );
-    return mapTruck(joined.rows[0]);
+    const truck = await prisma.truck.create({
+      data: {
+        truckNumber: payload.truckNumber,
+        plateNumber: payload.plateNumber,
+        capacity: payload.capacity,
+        truckType: payload.truckType || payload.type,
+        driverId: payload.driverId,
+        status: payload.status || "Available",
+      },
+      include: { driver: true },
+    });
+    return mapTruck(truck);
   },
 
   async deleteTruck(id) {
-    return withTransaction(async (client) => {
-      const truck = await client.query(`SELECT driver_id FROM trucks WHERE id = $1`, [id]);
-      if (!truck.rowCount) return false;
-      const activeTrip = await client.query(
-        `SELECT id FROM trips
-         WHERE truck_id = $1 AND status NOT IN ('Delivered', 'Cancelled')
-         LIMIT 1`,
-        [id]
-      );
-      if (activeTrip.rowCount) {
+    return prisma.$transaction(async (tx) => {
+      const truck = await tx.truck.findUnique({ where: { id } });
+      if (!truck) return false;
+
+      const activeTrip = await tx.trip.findFirst({
+        where: {
+          truckId: id,
+          status: { notIn: ["Delivered", "Cancelled"] },
+        },
+      });
+      if (activeTrip) {
         const error = new Error("Cannot delete truck with active trips");
         error.status = 400;
         throw error;
       }
-      await client.query(`DELETE FROM trucks WHERE id = $1`, [id]);
+
+      await tx.truck.delete({ where: { id } });
       return true;
     });
   },
 
-  async updateTruck(id, payload) {
-    const fields = [];
-    const params = [];
-    for (const [key, column] of [
-      ["truckNumber", "truck_number"],
-      ["plateNumber", "plate_number"],
-      ["capacity", "capacity"],
-      ["truckType", "truck_type"],
-      ["type", "truck_type"],
-      ["status", "status"],
-      ["driverId", "driver_id"]
-    ]) {
-      if (payload[key] !== undefined) {
-        params.push(payload[key]);
-        fields.push(`${column} = $${params.length}`);
+  async updateTruck(id, payload, { driverId } = {}) {
+    const existing = await prisma.truck.findUnique({ where: { id } });
+    if (!existing) return null;
+    if (driverId) {
+      if (existing.driverId !== driverId) {
+        const error = new Error("Not allowed to update this truck");
+        error.status = 403;
+        throw error;
+      }
+      payload = { status: payload.status };
+      if (!payload.status) {
+        const error = new Error("Drivers can only update truck status");
+        error.status = 400;
+        throw error;
       }
     }
-    if (!fields.length) {
-      const current = await query(
-        `SELECT t.*, u.name AS driver_name FROM trucks t JOIN users u ON u.id = t.driver_id WHERE t.id = $1`,
-        [id]
-      );
-      return mapTruck(current.rows[0]);
+
+    const data = {};
+    if (payload.truckNumber !== undefined) data.truckNumber = payload.truckNumber;
+    if (payload.plateNumber !== undefined) data.plateNumber = payload.plateNumber;
+    if (payload.capacity !== undefined) data.capacity = payload.capacity;
+    if (payload.truckType !== undefined) data.truckType = payload.truckType;
+    if (payload.type !== undefined) data.truckType = payload.type;
+    if (payload.status !== undefined) data.status = payload.status;
+    if (payload.driverId !== undefined) data.driverId = payload.driverId;
+
+    if (Object.keys(data).length > 0) {
+      await prisma.truck.update({ where: { id }, data });
     }
-    params.push(id);
-    await query(
-      `UPDATE trucks SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
-      params
-    );
-    const joined = await query(
-      `SELECT t.*, u.name AS driver_name FROM trucks t JOIN users u ON u.id = t.driver_id WHERE t.id = $1`,
-      [id]
-    );
-    return mapTruck(joined.rows[0]);
+    const truck = await prisma.truck.findUnique({
+      where: { id },
+      include: { driver: true },
+    });
+    return mapTruck(truck);
   },
 
+  // ── Cargo Requests ───────────────────────────────────────────────
+
   async listCargoRequests({ status, customerId, page = 1, limit = 20 } = {}) {
-    const params = [];
-    const clauses = [];
-    if (status) {
-      params.push(status);
-      clauses.push(`c.status = $${params.length}`);
-    }
-    if (customerId) {
-      params.push(customerId);
-      clauses.push(`c.customer_id = $${params.length}`);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const where = {};
+    if (status) where.status = reqStatusToDb(status);
+    if (customerId) where.customerId = customerId;
     const offset = (Number(page) - 1) * Number(limit);
-    params.push(Number(limit), offset);
-    const result = await query(
-      `SELECT c.*,
-              cu.name AS customer_name,
-              dr.name AS driver_name,
-              di.name AS dispatcher_name,
-              tr.truck_number
-       FROM cargo_requests c
-       JOIN users cu ON cu.id = c.customer_id
-       LEFT JOIN users dr ON dr.id = c.driver_id
-       LEFT JOIN users di ON di.id = c.dispatcher_id
-       LEFT JOIN trucks tr ON tr.id = c.truck_id
-       ${where}
-       ORDER BY c.created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    );
-    const countResult = await query(
-      `SELECT COUNT(*)::int AS total FROM cargo_requests c ${where}`,
-      params.slice(0, params.length - 2)
-    );
-    return {
-      data: result.rows.map(mapCargoRequest),
-      total: countResult.rows[0].total,
-      page: Number(page)
-    };
+    const [data, total] = await Promise.all([
+      prisma.cargoRequest.findMany({
+        where,
+        include: cargoRequestInclude,
+        orderBy: { createdAt: "desc" },
+        take: Number(limit),
+        skip: offset,
+      }),
+      prisma.cargoRequest.count({ where }),
+    ]);
+    return { data: data.map(mapCargoRequest), total, page: Number(page) };
   },
 
   async createCargoRequest(payload) {
     const id = `REQ-${Math.floor(9000 + Math.random() * 1000)}`;
-    return withTransaction(async (client) => {
-      const result = await client.query(
-        `INSERT INTO cargo_requests
-          (id, customer_id, pickup, destination, truck_type, weight, description, receiver, sender, special_instructions, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Pending')
-         RETURNING *`,
-        [
+
+    return prisma.$transaction(async (tx) => {
+      await tx.cargoRequest.create({
+        data: {
           id,
-          payload.customerId,
-          payload.pickup,
-          payload.destination,
-          payload.truckType,
-          payload.weight,
-          payload.description,
-          payload.receiver || null,
-          payload.sender || null,
-          payload.specialInstructions || null
-        ]
-      );
-      const notification = await createNotification(client, {
-        type: "order.created",
-        message: `${id} created by ${payload.customerName || "Customer"}`
+          customerId: payload.customerId,
+          pickup: payload.pickup,
+          destination: payload.destination,
+          truckType: payload.truckType,
+          weight: payload.weight,
+          description: payload.description,
+          receiver: payload.receiver || null,
+          sender: payload.sender || null,
+          specialInstructions: payload.specialInstructions || null,
+          status: "Pending",
+        },
       });
-      await writeAudit(client, {
-        actorId: payload.customerId,
-        action: "cargo.created",
-        entity: "cargo_requests",
-        entityId: id
+
+      const notification = await tx.notification.create({
+        data: {
+          type: "order.created",
+          message: `${id} created by ${payload.customerName || "Customer"}`,
+        },
       });
-      const joined = await client.query(
-        `SELECT c.*, cu.name AS customer_name
-         FROM cargo_requests c
-         JOIN users cu ON cu.id = c.customer_id
-         WHERE c.id = $1`,
-        [id]
-      );
-      return { request: mapCargoRequest(joined.rows[0]), notification };
+
+      await tx.auditLog.create({
+        data: {
+          actorId: payload.customerId,
+          action: "cargo.created",
+          entity: "cargo_requests",
+          entityId: id,
+        },
+      });
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+
+      return { request: mapCargoRequest(request), notification: mapNotification(notification) };
     });
   },
 
   async updateCargoRequest(id, payload, { customerId } = {}) {
-    const existing = await query(`SELECT * FROM cargo_requests WHERE id = $1`, [id]);
-    if (!existing.rowCount) return null;
-    const row = existing.rows[0];
-    if (customerId && row.customer_id !== customerId) {
+    const existing = await prisma.cargoRequest.findUnique({ where: { id } });
+    if (!existing) return null;
+
+    if (customerId && existing.customerId !== customerId) {
       const error = new Error("Not allowed to update this request");
       error.status = 403;
       throw error;
     }
-    if (row.status !== "Pending") {
+    if (reqStatusToApi(existing.status) !== "Pending") {
       const error = new Error("Only pending requests can be edited");
       error.status = 400;
       throw error;
     }
 
-    const fields = [];
-    const params = [];
-    for (const [key, column] of [
-      ["pickup", "pickup"],
-      ["destination", "destination"],
-      ["truckType", "truck_type"],
-      ["weight", "weight"],
-      ["description", "description"],
-      ["receiver", "receiver"],
-      ["sender", "sender"],
-      ["specialInstructions", "special_instructions"]
-    ]) {
-      if (payload[key] !== undefined) {
-        params.push(payload[key]);
-        fields.push(`${column} = $${params.length}`);
-      }
+    const data = {};
+    if (payload.pickup !== undefined) data.pickup = payload.pickup;
+    if (payload.destination !== undefined) data.destination = payload.destination;
+    if (payload.truckType !== undefined) data.truckType = payload.truckType;
+    if (payload.weight !== undefined) data.weight = payload.weight;
+    if (payload.description !== undefined) data.description = payload.description;
+    if (payload.receiver !== undefined) data.receiver = payload.receiver;
+    if (payload.sender !== undefined) data.sender = payload.sender;
+    if (payload.specialInstructions !== undefined) data.specialInstructions = payload.specialInstructions;
+
+    if (Object.keys(data).length > 0) {
+      await prisma.cargoRequest.update({ where: { id }, data });
     }
-    if (!fields.length) {
-      const joined = await query(
-        `SELECT c.*, cu.name AS customer_name
-         FROM cargo_requests c
-         JOIN users cu ON cu.id = c.customer_id
-         WHERE c.id = $1`,
-        [id]
-      );
-      return mapCargoRequest(joined.rows[0]);
-    }
-    params.push(id);
-    await query(
-      `UPDATE cargo_requests SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${params.length}`,
-      params
-    );
-    const joined = await query(
-      `SELECT c.*,
-              cu.name AS customer_name,
-              dr.name AS driver_name,
-              di.name AS dispatcher_name,
-              tr.truck_number
-       FROM cargo_requests c
-       JOIN users cu ON cu.id = c.customer_id
-       LEFT JOIN users dr ON dr.id = c.driver_id
-       LEFT JOIN users di ON di.id = c.dispatcher_id
-       LEFT JOIN trucks tr ON tr.id = c.truck_id
-       WHERE c.id = $1`,
-      [id]
-    );
-    return mapCargoRequest(joined.rows[0]);
+
+    const updated = await prisma.cargoRequest.findUnique({
+      where: { id },
+      include: cargoRequestInclude,
+    });
+    return mapCargoRequest(updated);
   },
 
   async assignCargoRequest(id, { driverId, truckId, dispatcherId }) {
-    return withTransaction(async (client) => {
-      const truckCheck = await client.query(`SELECT * FROM trucks WHERE id = $1 AND driver_id = $2`, [
-        truckId,
-        driverId
-      ]);
-      if (!truckCheck.rowCount) {
+    return prisma.$transaction(async (tx) => {
+      const truckCheck = await tx.truck.findFirst({
+        where: { id: truckId, driverId },
+      });
+      if (!truckCheck) {
         const error = new Error("Truck must belong to the selected driver");
         error.status = 400;
         throw error;
       }
 
-      const current = await client.query(`SELECT * FROM cargo_requests WHERE id = $1`, [id]);
-      if (!current.rowCount) return null;
-      const previous = current.rows[0];
+      const current = await tx.cargoRequest.findUnique({ where: { id } });
+      if (!current) return null;
 
-      if (previous.truck_id && previous.truck_id !== truckId) {
-        await client.query(`UPDATE trucks SET status = 'Available', updated_at = NOW() WHERE id = $1`, [
-          previous.truck_id
-        ]);
+      // Release previous truck if reassigning
+      if (current.truckId && current.truckId !== truckId) {
+        await tx.truck.update({
+          where: { id: current.truckId },
+          data: { status: "Available" },
+        });
       }
 
-      const updated = await client.query(
-        `UPDATE cargo_requests
-         SET status = 'Assigned',
-             driver_id = $2,
-             truck_id = $3,
-             dispatcher_id = $4,
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [id, driverId, truckId, dispatcherId]
-      );
-      if (!updated.rowCount) return null;
+      const updated = await tx.cargoRequest.update({
+        where: { id },
+        data: {
+          status: "Assigned",
+          driverId,
+          truckId,
+          dispatcherId,
+        },
+      });
 
-      const request = updated.rows[0];
-      const existingTrip = await client.query(
-        `SELECT id FROM trips
-         WHERE cargo_request_id = $1 AND status NOT IN ('Delivered', 'Cancelled')
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [id]
-      );
+      // Find or create trip
+      const existingTrip = await tx.trip.findFirst({
+        where: {
+          cargoRequestId: id,
+          status: { notIn: ["Delivered", "Cancelled"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
 
       let tripId;
-      if (existingTrip.rowCount) {
-        tripId = existingTrip.rows[0].id;
-        await client.query(
-          `UPDATE trips
-           SET driver_id = $2,
-               truck_id = $3,
-               dispatcher_id = $4,
-               status = 'Assigned',
-               updated_at = NOW()
-           WHERE id = $1`,
-          [tripId, driverId, truckId, dispatcherId]
-        );
+      if (existingTrip) {
+        tripId = existingTrip.id;
+        await tx.trip.update({
+          where: { id: tripId },
+          data: { driverId, truckId, dispatcherId, status: "Assigned" },
+        });
       } else {
         tripId = `SHP-${Math.floor(10000 + Math.random() * 9000)}`;
-        await client.query(
-          `INSERT INTO trips
-            (id, cargo_request_id, customer_id, driver_id, dispatcher_id, truck_id, pickup, destination, distance, estimated_time, status, fare)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Assigned',$11)`,
-          [
-            tripId,
-            request.id,
-            request.customer_id,
+        await tx.trip.create({
+          data: {
+            id: tripId,
+            cargoRequestId: updated.id,
+            customerId: updated.customerId,
             driverId,
             dispatcherId,
             truckId,
-            request.pickup,
-            request.destination,
-            payloadDistance(request.pickup, request.destination),
-            "8h 00m",
-            estimateFare(request.weight)
-          ]
-        );
+            pickup: updated.pickup,
+            destination: updated.destination,
+            distance: payloadDistance(updated.pickup, updated.destination),
+            estimatedTime: "8h 00m",
+            status: "Assigned",
+            fare: estimateFare(updated.weight),
+          },
+        });
       }
-      await client.query(`UPDATE trucks SET status = 'Busy', updated_at = NOW() WHERE id = $1`, [truckId]);
 
-      const notification = await createNotification(client, {
-        userId: driverId,
-        type: "driver.assigned",
-        message: `${id} assigned to driver`
-      });
-      await createNotification(client, {
-        userId: request.customer_id,
-        type: "driver.assigned",
-        message: `${id} assigned. Trip ${tripId} created`
+      await tx.truck.update({
+        where: { id: truckId },
+        data: { status: "Busy" },
       });
 
-      const joined = await client.query(
-        `SELECT c.*,
-                cu.name AS customer_name,
-                dr.name AS driver_name,
-                di.name AS dispatcher_name,
-                tr.truck_number
-         FROM cargo_requests c
-         JOIN users cu ON cu.id = c.customer_id
-         LEFT JOIN users dr ON dr.id = c.driver_id
-         LEFT JOIN users di ON di.id = c.dispatcher_id
-         LEFT JOIN trucks tr ON tr.id = c.truck_id
-         WHERE c.id = $1`,
-        [id]
-      );
-      return { request: mapCargoRequest(joined.rows[0]), tripId, notification };
+      const notification = await tx.notification.create({
+        data: {
+          userId: driverId,
+          type: "driver.assigned",
+          message: `${id} assigned to driver`,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: updated.customerId,
+          type: "driver.assigned",
+          message: `${id} assigned. Trip ${tripId} created`,
+        },
+      });
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+
+      return { request: mapCargoRequest(request), tripId, notification: mapNotification(notification) };
     });
   },
 
-  async cancelCargoRequest(id, actorId) {
-    return withTransaction(async (client) => {
-      const existing = await client.query(`SELECT * FROM cargo_requests WHERE id = $1`, [id]);
-      if (!existing.rowCount) return null;
-      const row = existing.rows[0];
-      if (["Loaded", "In Transit", "Delivered"].includes(row.status)) {
-        const error = new Error("Cannot cancel a request that is already in progress");
+  async cancelCargoRequest(id, actorId, { customerId } = {}) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.cargoRequest.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      if (customerId && existing.customerId !== customerId) {
+        const error = new Error("Not allowed to cancel this request");
+        error.status = 403;
+        throw error;
+      }
+
+      const apiStatus = reqStatusToApi(existing.status);
+      if (["Loaded", "In Transit", "Delivered", "Cancelled"].includes(apiStatus)) {
+        const error = new Error("Cannot cancel a request in this status");
         error.status = 400;
         throw error;
       }
 
-      if (row.truck_id) {
-        await client.query(`UPDATE trucks SET status = 'Available', updated_at = NOW() WHERE id = $1`, [row.truck_id]);
-      }
-
-      await client.query(
-        `UPDATE trips
-         SET status = 'Cancelled', updated_at = NOW()
-         WHERE cargo_request_id = $1 AND status NOT IN ('Delivered', 'Cancelled')`,
-        [id]
-      );
-
-      const result = await client.query(
-        `UPDATE cargo_requests
-         SET status = 'Cancelled',
-             driver_id = NULL,
-             truck_id = NULL,
-             updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [id]
-      );
-
-      await createNotification(client, {
-        userId: row.customer_id,
-        type: "order.cancelled",
-        message: `${id} cancelled`
-      });
-      if (actorId && actorId !== row.customer_id) {
-        await createNotification(client, {
-          userId: actorId,
-          type: "order.cancelled",
-          message: `${id} cancelled by dispatcher`
+      if (existing.truckId) {
+        await tx.truck.update({
+          where: { id: existing.truckId },
+          data: { status: "Available" },
         });
       }
 
-      const joined = await client.query(
-        `SELECT c.*,
-                cu.name AS customer_name,
-                dr.name AS driver_name,
-                di.name AS dispatcher_name,
-                tr.truck_number
-         FROM cargo_requests c
-         JOIN users cu ON cu.id = c.customer_id
-         LEFT JOIN users dr ON dr.id = c.driver_id
-         LEFT JOIN users di ON di.id = c.dispatcher_id
-         LEFT JOIN trucks tr ON tr.id = c.truck_id
-         WHERE c.id = $1`,
-        [id]
-      );
-      return mapCargoRequest(joined.rows[0]);
+      await tx.trip.updateMany({
+        where: {
+          cargoRequestId: id,
+          status: { notIn: ["Delivered", "Cancelled"] },
+        },
+        data: { status: "Cancelled" },
+      });
+
+      await tx.cargoRequest.update({
+        where: { id },
+        data: {
+          status: "Cancelled",
+          driverId: null,
+          truckId: null,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: existing.customerId,
+          type: "order.cancelled",
+          message: `${id} cancelled`,
+        },
+      });
+
+      if (actorId && actorId !== existing.customerId) {
+        await tx.notification.create({
+          data: {
+            userId: actorId,
+            type: "order.cancelled",
+            message: `${id} cancelled by dispatcher`,
+          },
+        });
+      }
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+      return mapCargoRequest(request);
     });
   },
 
+  // ── Trips ────────────────────────────────────────────────────────
+
   async listTrips({ status, driverId, customerId, page = 1, limit = 50 } = {}) {
-    const params = [];
-    const clauses = [];
-    if (status) {
-      params.push(status);
-      clauses.push(`t.status = $${params.length}`);
-    }
-    if (driverId) {
-      params.push(driverId);
-      clauses.push(`t.driver_id = $${params.length}`);
-    }
-    if (customerId) {
-      params.push(customerId);
-      clauses.push(`t.customer_id = $${params.length}`);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const where = {};
+    if (status) where.status = tripStatusToDb(status);
+    if (driverId) where.driverId = driverId;
+    if (customerId) where.customerId = customerId;
     const offset = (Number(page) - 1) * Number(limit);
-    params.push(Number(limit), offset);
-    const result = await query(
-      `SELECT t.*,
-              cu.name AS customer_name,
-              dr.name AS driver_name,
-              di.name AS dispatcher_name,
-              tr.truck_number,
-              cr.description AS cargo_description
-       FROM trips t
-       JOIN users cu ON cu.id = t.customer_id
-       LEFT JOIN users dr ON dr.id = t.driver_id
-       LEFT JOIN users di ON di.id = t.dispatcher_id
-       LEFT JOIN trucks tr ON tr.id = t.truck_id
-       LEFT JOIN cargo_requests cr ON cr.id = t.cargo_request_id
-       ${where}
-       ORDER BY t.created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    );
-    const countResult = await query(
-      `SELECT COUNT(*)::int AS total FROM trips t ${where}`,
-      params.slice(0, params.length - 2)
-    );
-    return { data: result.rows.map(mapTrip), total: countResult.rows[0].total, page: Number(page) };
+    const [data, total] = await Promise.all([
+      prisma.trip.findMany({
+        where,
+        include: tripInclude,
+        orderBy: { createdAt: "desc" },
+        take: Number(limit),
+        skip: offset,
+      }),
+      prisma.trip.count({ where }),
+    ]);
+    return { data: data.map(mapTrip), total, page: Number(page) };
   },
 
-  async updateTripStatus(id, status, actorId) {
-    return withTransaction(async (client) => {
-      const updated = await client.query(
-        `UPDATE trips SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
-        [id, status]
-      );
-      if (!updated.rowCount) return null;
-      const trip = updated.rows[0];
+  async updateTripStatus(id, status, actorId, { driverId } = {}) {
+    const existing = await prisma.trip.findUnique({ where: { id } });
+    if (!existing) return null;
+    if (driverId && existing.driverId !== driverId) {
+      const error = new Error("Not allowed to update this trip");
+      error.status = 403;
+      throw error;
+    }
 
-      if (trip.cargo_request_id) {
+    const dbStatus = tripStatusToDb(status);
+
+    return prisma.$transaction(async (tx) => {
+      const trip = await tx.trip.update({
+        where: { id },
+        data: { status: dbStatus },
+      }).catch(() => null);
+
+      if (!trip) return null;
+
+      // Sync cargo request status
+      if (trip.cargoRequestId) {
         const requestStatus =
           status === "Delayed" ? "In Transit" : status === "Cancelled" ? "Cancelled" : status;
-        const allowed = [
-          "Pending",
-          "Assigned",
-          "Accepted",
-          "Arrived Pickup",
-          "Loaded",
-          "In Transit",
-          "Delivered",
-          "Cancelled"
-        ];
+        const allowed = ["Pending", "Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delivered", "Cancelled"];
         if (allowed.includes(requestStatus)) {
-          await client.query(
-            `UPDATE cargo_requests SET status = $2::request_status, updated_at = NOW() WHERE id = $1`,
-            [trip.cargo_request_id, requestStatus]
-          );
+          await tx.cargoRequest.update({
+            where: { id: trip.cargoRequestId },
+            data: { status: reqStatusToDb(requestStatus) },
+          });
         }
       }
 
+      // Release truck & handle payment on terminal statuses
       if (status === "Delivered" || status === "Cancelled") {
-        if (trip.truck_id) {
-          await client.query(`UPDATE trucks SET status = 'Available', updated_at = NOW() WHERE id = $1`, [
-            trip.truck_id
-          ]);
+        if (trip.truckId) {
+          await tx.truck.update({
+            where: { id: trip.truckId },
+            data: { status: "Available" },
+          });
         }
         if (status === "Delivered") {
-          const existingPayment = await client.query(`SELECT id FROM payments WHERE trip_id = $1 LIMIT 1`, [
-            trip.id
-          ]);
-          if (!existingPayment.rowCount) {
-            await client.query(
-              `INSERT INTO payments (trip_id, customer_id, amount, status, method)
-               VALUES ($1, $2, $3, 'Paid', 'card')`,
-              [trip.id, trip.customer_id, trip.fare]
-            );
+          const existingPayment = await tx.payment.findFirst({
+            where: { tripId: trip.id },
+          });
+          if (!existingPayment) {
+            await tx.payment.create({
+              data: {
+                tripId: trip.id,
+                customerId: trip.customerId,
+                amount: trip.fare,
+                status: "Paid",
+                method: "card",
+              },
+            });
           }
         }
       }
@@ -927,164 +836,198 @@ export const db = {
       const typeMap = {
         Accepted: "driver.accepted",
         "Arrived Pickup": "driver.arrived",
-        Delivered: "cargo.delivered"
+        Delivered: "cargo.delivered",
       };
-      const notification = await createNotification(client, {
-        userId: trip.customer_id,
-        type: typeMap[status] || "trip.status.updated",
-        message: `${id} updated to ${status}`
-      });
-      await writeAudit(client, {
-        actorId,
-        action: "trip.status.updated",
-        entity: "trips",
-        entityId: id,
-        meta: { status }
+
+      const notification = await tx.notification.create({
+        data: {
+          userId: trip.customerId,
+          type: typeMap[status] || "trip.status.updated",
+          message: `${id} updated to ${status}`,
+        },
       });
 
-      const joined = await client.query(
-        `SELECT t.*,
-                cu.name AS customer_name,
-                dr.name AS driver_name,
-                di.name AS dispatcher_name,
-                tr.truck_number,
-                cr.description AS cargo_description
-         FROM trips t
-         JOIN users cu ON cu.id = t.customer_id
-         LEFT JOIN users dr ON dr.id = t.driver_id
-         LEFT JOIN users di ON di.id = t.dispatcher_id
-         LEFT JOIN trucks tr ON tr.id = t.truck_id
-         LEFT JOIN cargo_requests cr ON cr.id = t.cargo_request_id
-         WHERE t.id = $1`,
-        [id]
-      );
-      return { trip: mapTrip(joined.rows[0]), notification };
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          action: "trip.status.updated",
+          entity: "trips",
+          entityId: id,
+          meta: { status },
+        },
+      });
+
+      const joined = await tx.trip.findUnique({
+        where: { id },
+        include: tripInclude,
+      });
+
+      return { trip: mapTrip(joined), notification: mapNotification(notification) };
     });
   },
 
-  async updateTripLocation(id, { lat, lng }) {
-    const result = await query(
-      `UPDATE trips
-       SET last_lat = $2, last_lng = $3, last_location_at = NOW(), updated_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [id, lat, lng]
-    );
-    if (!result.rowCount) return null;
+  async updateTripLocation(id, { lat, lng }, { driverId } = {}) {
+    const existing = await prisma.trip.findUnique({ where: { id } });
+    if (!existing) return null;
+    if (driverId && existing.driverId !== driverId) {
+      const error = new Error("Not allowed to update this trip location");
+      error.status = 403;
+      throw error;
+    }
+
+    const trip = await prisma.trip.update({
+      where: { id },
+      data: {
+        lastLat: lat,
+        lastLng: lng,
+        lastLocationAt: new Date(),
+      },
+    }).catch(() => null);
+
+    if (!trip) return null;
     return {
       id,
-      lastLocation: { lat, lng, updatedAt: new Date().toISOString() }
+      lastLocation: { lat, lng, updatedAt: new Date().toISOString() },
     };
   },
 
-  async uploadTripProof(id, { deliveryProofUrl, signatureUrl }) {
-    const result = await query(
-      `UPDATE trips
-       SET delivery_proof_url = COALESCE($2, delivery_proof_url),
-           signature_url = COALESCE($3, signature_url),
-           updated_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [id, deliveryProofUrl || null, signatureUrl || null]
-    );
-    if (!result.rowCount) return null;
-    return { id, deliveryProofUrl: result.rows[0].delivery_proof_url, signatureUrl: result.rows[0].signature_url };
+  async uploadTripProof(id, { deliveryProofUrl, signatureUrl }, { driverId } = {}) {
+    const existing = await prisma.trip.findUnique({ where: { id } });
+    if (!existing) return null;
+    if (driverId && existing.driverId !== driverId) {
+      const error = new Error("Not allowed to upload proof for this trip");
+      error.status = 403;
+      throw error;
+    }
+
+    const data = {};
+    if (deliveryProofUrl) data.deliveryProofUrl = deliveryProofUrl;
+    if (signatureUrl) data.signatureUrl = signatureUrl;
+
+    const trip = await prisma.trip.update({
+      where: { id },
+      data,
+    }).catch(() => null);
+
+    if (!trip) return null;
+    return { id, deliveryProofUrl: trip.deliveryProofUrl, signatureUrl: trip.signatureUrl };
   },
 
   async rejectTrip(id, driverId) {
-    return withTransaction(async (client) => {
-      const tripResult = await client.query(`SELECT * FROM trips WHERE id = $1 AND driver_id = $2`, [
-        id,
-        driverId
-      ]);
-      if (!tripResult.rowCount) return null;
-      const trip = tripResult.rows[0];
-      await client.query(
-        `UPDATE trips SET status = 'Cancelled', updated_at = NOW() WHERE id = $1`,
-        [id]
-      );
-      if (trip.cargo_request_id) {
-        await client.query(
-          `UPDATE cargo_requests
-           SET status = 'Pending', driver_id = NULL, truck_id = NULL, updated_at = NOW()
-           WHERE id = $1`,
-          [trip.cargo_request_id]
-        );
-      }
-      if (trip.truck_id) {
-        await client.query(`UPDATE trucks SET status = 'Available', updated_at = NOW() WHERE id = $1`, [
-          trip.truck_id
-        ]);
-      }
-      const notification = await createNotification(client, {
-        userId: trip.dispatcher_id,
-        type: "trip.rejected",
-        message: `${id} rejected by driver`
+    return prisma.$transaction(async (tx) => {
+      const trip = await tx.trip.findFirst({
+        where: { id, driverId },
       });
-      return { id, status: "Cancelled", notification };
+      if (!trip) return null;
+
+      await tx.trip.update({
+        where: { id },
+        data: { status: "Cancelled" },
+      });
+
+      if (trip.cargoRequestId) {
+        await tx.cargoRequest.update({
+          where: { id: trip.cargoRequestId },
+          data: { status: "Pending", driverId: null, truckId: null },
+        });
+      }
+
+      if (trip.truckId) {
+        await tx.truck.update({
+          where: { id: trip.truckId },
+          data: { status: "Available" },
+        });
+      }
+
+      const notification = await tx.notification.create({
+        data: {
+          userId: trip.dispatcherId,
+          type: "trip.rejected",
+          message: `${id} rejected by driver`,
+        },
+      });
+
+      return { id, status: "Cancelled", notification: mapNotification(notification) };
     });
   },
 
+  // ── Notifications ────────────────────────────────────────────────
+
   async listNotifications({ userId, page = 1, limit = 50 } = {}) {
-    const params = [];
-    const clauses = [];
+    const where = {};
     if (userId) {
-      params.push(userId);
-      clauses.push(`(user_id = $${params.length} OR user_id IS NULL)`);
+      where.OR = [{ userId }, { userId: null }];
     }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const offset = (Number(page) - 1) * Number(limit);
-    params.push(Number(limit), offset);
-    const result = await query(
-      `SELECT * FROM notifications ${where} ORDER BY created_at DESC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    );
-    return { data: result.rows.map(mapNotification), total: result.rowCount };
+    const data = await prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: Number(limit),
+      skip: offset,
+    });
+    return { data: data.map(mapNotification), total: data.length };
   },
 
   async markNotificationRead(id) {
-    const result = await query(
-      `UPDATE notifications SET read = TRUE WHERE id = $1 RETURNING *`,
-      [id]
-    );
-    return mapNotification(result.rows[0]);
+    const notification = await prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+    return mapNotification(notification);
   },
 
+  // ── Dashboard & Reports ──────────────────────────────────────────
+
   async dashboardStats() {
-    const result = await query(`
-      SELECT
-        (SELECT COUNT(*)::int FROM users WHERE role = 'customer') AS total_customers,
-        (SELECT COUNT(*)::int FROM users WHERE role = 'driver') AS total_drivers,
-        (SELECT COUNT(*)::int FROM users WHERE role = 'dispatcher') AS total_dispatchers,
-        (SELECT COUNT(*)::int FROM users) AS total_users,
-        (SELECT COUNT(*)::int FROM trucks) AS total_trucks,
-        (SELECT COUNT(*)::int FROM cargo_requests WHERE status = 'Pending') AS pending_orders,
-        (SELECT COUNT(*)::int FROM trips WHERE status = 'Delivered') AS completed_orders,
-        (SELECT COUNT(*)::int FROM trips WHERE status IN ('In Transit', 'Loaded', 'Accepted', 'Arrived Pickup')) AS live_trips,
-        (SELECT COUNT(*)::int FROM trips WHERE status = 'In Transit') AS in_transit,
-        (SELECT COALESCE(SUM(amount), 0)::float FROM payments WHERE status = 'Paid') AS revenue,
-        (SELECT COUNT(*)::int FROM cargo_requests WHERE created_at::date = CURRENT_DATE) AS todays_orders,
-        (SELECT COUNT(*)::int FROM trucks WHERE status = 'Available') AS available_trucks
-    `);
-    const row = result.rows[0];
+    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+
+    const [totalCustomers, totalDrivers, totalDispatchers] = await Promise.all([
+      prisma.user.count({ where: { role: "customer" } }),
+      prisma.user.count({ where: { role: "driver" } }),
+      prisma.user.count({ where: { role: "dispatcher" } }),
+    ]);
+
+    const [totalUsers, totalTrucks, pendingOrders] = await Promise.all([
+      prisma.user.count(),
+      prisma.truck.count(),
+      prisma.cargoRequest.count({ where: { status: "Pending" } }),
+    ]);
+
+    const [completedOrders, liveTrips, inTransit] = await Promise.all([
+      prisma.trip.count({ where: { status: "Delivered" } }),
+      prisma.trip.count({
+        where: { status: { in: ["In_Transit", "Loaded", "Accepted", "Arrived_Pickup"] } },
+      }),
+      prisma.trip.count({ where: { status: "In_Transit" } }),
+    ]);
+
+    const [todaysOrders, availableTrucks, revenueResult] = await Promise.all([
+      prisma.cargoRequest.count({ where: { createdAt: { gte: startOfDay } } }),
+      prisma.truck.count({ where: { status: "Available" } }),
+      prisma.payment.aggregate({
+        where: { status: "Paid" },
+        _sum: { amount: true },
+      }),
+    ]);
+
     return {
-      totalCustomers: row.total_customers,
-      totalDrivers: row.total_drivers,
-      totalDispatchers: row.total_dispatchers,
-      totalUsers: row.total_users,
-      totalTrucks: row.total_trucks,
-      pendingOrders: row.pending_orders,
-      completedOrders: row.completed_orders,
-      liveTrips: row.live_trips,
-      inTransit: row.in_transit,
-      revenue: row.revenue,
-      todaysOrders: row.todays_orders,
-      availableTrucks: row.available_trucks
+      totalCustomers,
+      totalDrivers,
+      totalDispatchers,
+      totalUsers,
+      totalTrucks,
+      pendingOrders,
+      completedOrders,
+      liveTrips,
+      inTransit,
+      revenue: Number(revenueResult._sum.amount || 0),
+      todaysOrders,
+      availableTrucks,
     };
   },
 
   async revenueReport({ period = "monthly" } = {}) {
+    // Use raw query for date bucketing — Prisma doesn't support date_trunc grouping natively
     const buckets =
       period === "weekly"
         ? `TO_CHAR(created_at, 'Dy')`
@@ -1094,29 +1037,30 @@ export const db = {
             ? `TO_CHAR(created_at, 'HH24:00')`
             : `TO_CHAR(created_at, '"Week" WW')`;
 
-    const result = await query(
+    const result = await prisma.$queryRawUnsafe(
       `SELECT ${buckets} AS label, COALESCE(SUM(amount), 0)::float AS revenue
        FROM payments
        WHERE status = 'Paid'
        GROUP BY 1
        ORDER BY 1`
     );
-    if (!result.rowCount) {
+
+    if (!result.length) {
       return {
         period,
         data: [
           { label: "Week 1", revenue: 0 },
           { label: "Week 2", revenue: 0 },
           { label: "Week 3", revenue: 0 },
-          { label: "Week 4", revenue: 0 }
-        ]
+          { label: "Week 4", revenue: 0 },
+        ],
       };
     }
-    return { period, data: result.rows.map((row) => ({ label: row.label, revenue: row.revenue })) };
+    return { period, data: result.map((row) => ({ label: row.label, revenue: row.revenue })) };
   },
 
   async performanceReport() {
-    const drivers = await query(`
+    const drivers = await prisma.$queryRaw`
       SELECT u.name,
              COUNT(t.id)::int AS completed_trips,
              COALESCE(SUM(t.fare), 0)::float AS earnings,
@@ -1126,8 +1070,9 @@ export const db = {
       WHERE u.role = 'driver'
       GROUP BY u.id
       ORDER BY completed_trips DESC
-    `);
-    const dispatchers = await query(`
+    `;
+
+    const dispatchers = await prisma.$queryRaw`
       SELECT u.name,
              COUNT(t.id)::int AS assigned_trips,
              CASE WHEN COUNT(t.id) = 0 THEN 0
@@ -1138,147 +1083,223 @@ export const db = {
       WHERE u.role = 'dispatcher'
       GROUP BY u.id
       ORDER BY assigned_trips DESC
-    `);
+    `;
+
     return {
-      drivers: drivers.rows.map((row) => ({
+      drivers: drivers.map((row) => ({
         name: row.name,
         completedTrips: row.completed_trips,
         earnings: row.earnings,
-        rating: Number(row.rating)
+        rating: Number(row.rating),
       })),
-      dispatchers: dispatchers.rows.map((row) => ({
+      dispatchers: dispatchers.map((row) => ({
         name: row.name,
         assignedTrips: row.assigned_trips,
-        closeRate: Number(row.close_rate)
-      }))
+        closeRate: Number(row.close_rate),
+      })),
     };
   },
 
   async shipmentDistribution() {
-    const result = await query(`
+    const result = await prisma.$queryRaw`
       SELECT status, COUNT(*)::int AS value
       FROM trips
       GROUP BY status
-    `);
-    return result.rows.map((row) => ({ name: row.status, value: row.value }));
+    `;
+    return result.map((row) => ({ name: tripStatusToApi(row.status), value: row.value }));
   },
+
+  // ── Truck Types ──────────────────────────────────────────────────
 
   async listTruckTypes() {
-    const result = await query(`SELECT * FROM truck_types ORDER BY name`);
-    return result.rows;
+    return prisma.truckType.findMany({ orderBy: { name: "asc" } });
   },
 
+  // ── Settings ─────────────────────────────────────────────────────
+
   async getSettings() {
-    const result = await query(`SELECT key, value FROM settings`);
-    return Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+    const rows = await prisma.setting.findMany();
+    return Object.fromEntries(rows.map((row) => [row.key, row.value]));
   },
 
   async updateSettings(key, value) {
-    const result = await query(
-      `INSERT INTO settings (key, value, updated_at)
-       VALUES ($1, $2::jsonb, NOW())
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-       RETURNING key, value`,
-      [key, JSON.stringify(value)]
-    );
-    return result.rows[0];
+    return prisma.setting.upsert({
+      where: { key },
+      update: { value, updatedAt: new Date() },
+      create: { key, value },
+    });
   },
 
+  // ── Payments ─────────────────────────────────────────────────────
+
   async createPayment({ tripId, customerId, amount, status = "Pending", method = "card" }) {
-    const result = await query(
-      `INSERT INTO payments (trip_id, customer_id, amount, status, method)
-       VALUES ($1, $2, $3, $4::payment_status, $5)
-       RETURNING *`,
-      [tripId || null, customerId, amount, status, method]
-    );
-    const row = result.rows[0];
-    const customer = await query(`SELECT name FROM users WHERE id = $1`, [row.customer_id]);
+    const payment = await prisma.payment.create({
+      data: {
+        tripId: tripId || null,
+        customerId,
+        amount,
+        status,
+        method,
+      },
+    });
+    const customer = await prisma.user.findUnique({ where: { id: payment.customerId } });
     return {
-      id: row.id,
-      tripId: row.trip_id,
-      customerId: row.customer_id,
-      customer: customer.rows[0]?.name,
-      amount: Number(row.amount),
-      status: row.status,
-      method: row.method,
-      createdAt: row.created_at
+      id: payment.id,
+      tripId: payment.tripId,
+      customerId: payment.customerId,
+      customer: customer?.name,
+      amount: Number(payment.amount),
+      status: payment.status,
+      method: payment.method,
+      createdAt: payment.createdAt,
     };
   },
 
   async deletePayment(id) {
-    const result = await query(`DELETE FROM payments WHERE id = $1 RETURNING id`, [id]);
-    return Boolean(result.rowCount);
+    const result = await prisma.payment.deleteMany({ where: { id } });
+    return result.count > 0;
   },
 
   async updatePayment(id, { status }) {
-    const result = await query(
-      `UPDATE payments SET status = $2::payment_status WHERE id = $1 RETURNING *`,
-      [id, status]
-    );
-    if (!result.rowCount) return null;
-    const row = result.rows[0];
-    const customer = await query(`SELECT name FROM users WHERE id = $1`, [row.customer_id]);
+    const payment = await prisma.payment.update({
+      where: { id },
+      data: { status },
+    }).catch(() => null);
+
+    if (!payment) return null;
+    const customer = payment.customerId
+      ? await prisma.user.findUnique({ where: { id: payment.customerId } })
+      : null;
+
     return {
-      id: row.id,
-      tripId: row.trip_id,
-      customerId: row.customer_id,
-      customer: customer.rows[0]?.name,
-      amount: Number(row.amount),
-      status: row.status,
-      method: row.method,
-      createdAt: row.created_at
+      id: payment.id,
+      tripId: payment.tripId,
+      customerId: payment.customerId,
+      customer: customer?.name,
+      amount: Number(payment.amount),
+      status: payment.status,
+      method: payment.method,
+      createdAt: payment.createdAt,
     };
   },
 
   async listPayments({ page = 1, limit = 50 } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
-    const result = await query(
-      `SELECT p.*, u.name AS customer_name
-       FROM payments p
-       LEFT JOIN users u ON u.id = p.customer_id
-       ORDER BY p.created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [Number(limit), offset]
-    );
+    const data = await prisma.payment.findMany({
+      include: { customer: true },
+      orderBy: { createdAt: "desc" },
+      take: Number(limit),
+      skip: offset,
+    });
     return {
-      data: result.rows.map((row) => ({
+      data: data.map((row) => ({
         id: row.id,
-        tripId: row.trip_id,
-        customerId: row.customer_id,
-        customer: row.customer_name,
+        tripId: row.tripId,
+        customerId: row.customerId,
+        customer: row.customer?.name,
         amount: Number(row.amount),
         status: row.status,
         method: row.method,
-        createdAt: row.created_at
+        createdAt: row.createdAt,
       })),
-      total: result.rowCount
+      total: data.length,
     };
   },
 
+  // ── Verification codes ─────────────────────────────────────────
+
+  async createVerificationCode({ email, purpose, payload = null, ttlMinutes = 10 }) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const normalizedEmail = email.toLowerCase().trim();
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+    await prisma.verificationCode.updateMany({
+      where: { email: normalizedEmail, purpose, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    await prisma.verificationCode.create({
+      data: {
+        email: normalizedEmail,
+        code,
+        purpose,
+        payload: payload || undefined,
+        expiresAt,
+      },
+    });
+
+    return { code, expiresAt };
+  },
+
+  async consumeVerificationCode({ email, code, purpose }) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const now = new Date();
+
+    return prisma.$transaction(async (tx) => {
+      const row = await tx.verificationCode.findFirst({
+        where: {
+          email: normalizedEmail,
+          code,
+          purpose,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, payload: true },
+      });
+      if (!row) return null;
+
+      await tx.verificationCode.update({
+        where: { id: row.id },
+        data: { usedAt: now },
+      });
+
+      if (!row.payload) return { __verified: true };
+      return row.payload;
+    });
+  },
+
+  async getPendingVerificationPayload(email, purpose) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const row = await prisma.verificationCode.findFirst({
+      where: {
+        email: normalizedEmail,
+        purpose,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!row?.payload) return null;
+    return row.payload;
+  },
+
+  // ── Audit Logs ───────────────────────────────────────────────────
+
   async listAuditLogs({ page = 1, limit = 50 } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
-    const result = await query(
-      `SELECT a.*, u.name AS actor_name
-       FROM audit_logs a
-       LEFT JOIN users u ON u.id = a.actor_id
-       ORDER BY a.created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [Number(limit), offset]
-    );
+    const data = await prisma.auditLog.findMany({
+      include: { actor: true },
+      orderBy: { createdAt: "desc" },
+      take: Number(limit),
+      skip: offset,
+    });
     return {
-      data: result.rows.map((row) => ({
+      data: data.map((row) => ({
         id: row.id,
-        actorId: row.actor_id,
-        actor: row.actor_name,
+        actorId: row.actorId,
+        actor: row.actor?.name,
         action: row.action,
         entity: row.entity,
-        entityId: row.entity_id,
+        entityId: row.entityId,
         meta: row.meta,
-        createdAt: row.created_at
-      }))
+        createdAt: row.createdAt,
+      })),
     };
-  }
+  },
 };
+
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 function payloadDistance(from, to) {
   return `${Math.max(80, Math.abs(String(from).length * 37 + String(to).length * 29))} mi`;

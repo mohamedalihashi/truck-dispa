@@ -103,7 +103,9 @@ router.patch(
 
 router.delete("/:id", requireRole("customer", "dispatcher", "admin"), async (req, res, next) => {
   try {
-    const request = await db.cancelCargoRequest(req.params.id, req.user.sub);
+    const options = {};
+    if (req.user.role === "customer") options.customerId = req.user.sub;
+    const request = await db.cancelCargoRequest(req.params.id, req.user.sub, options);
     if (!request) return res.status(404).json({ message: "Cargo request not found" });
     req.app.get("io").emit("order.cancelled", request);
     res.json(request);

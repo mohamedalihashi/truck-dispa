@@ -25,6 +25,13 @@ export function AuthProvider({ children }) {
       .finally(() => setBooting(false));
   }, [token]);
 
+  function completeAuth(result) {
+    saveSession(result);
+    setUser(result.user);
+    setToken(result.token);
+    return result;
+  }
+
   const value = useMemo(
     () => ({
       user,
@@ -33,17 +40,22 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(user && token),
       async login(payload) {
         const result = await api.login(payload);
-        saveSession(result);
-        setUser(result.user);
-        setToken(result.token);
-        return result;
+        if (result.verificationRequired) return result;
+        return completeAuth(result);
+      },
+      async verifyLogin(payload) {
+        return completeAuth(await api.verifyLogin(payload));
       },
       async register(payload) {
         const result = await api.register(payload);
-        saveSession(result);
-        setUser(result.user);
-        setToken(result.token);
-        return result;
+        if (result.verificationRequired) return result;
+        return completeAuth(result);
+      },
+      async verifyRegister(payload) {
+        return completeAuth(await api.verifyRegister(payload));
+      },
+      async resendCode(payload) {
+        return api.resendCode(payload);
       },
       logout() {
         clearSession();

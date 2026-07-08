@@ -29,8 +29,8 @@ export function CustomerDashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Customer Dashboard"
-        subtitle="Real-time overview of your fleet and shipments."
+        title="Fleet Manager Dashboard"
+        subtitle="Book trucks, track shipments, and manage your cargo requests."
         actions={
           <>
             <Link to="/customer/payments">
@@ -180,9 +180,15 @@ export function CustomerDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <QuickLink icon={HelpCircle} tone="bg-secondary-fixed text-on-secondary-fixed" title="Need Help?" text="24/7 dedicated support team" />
-        <QuickLink icon={FileText} tone="bg-tertiary-fixed text-on-tertiary-fixed" title="Documentation" text="Compliance & BOL templates" />
-        <QuickLink icon={CreditCard} tone="bg-primary-fixed text-on-primary-fixed" title="Billing Central" text="Manage cards and invoices" />
+        <Link to="/customer/book" className="block">
+          <QuickLink icon={HelpCircle} tone="bg-secondary-fixed text-on-secondary-fixed" title="Book a Truck" text="Create a new cargo request" />
+        </Link>
+        <Link to="/customer/shipments" className="block">
+          <QuickLink icon={FileText} tone="bg-tertiary-fixed text-on-tertiary-fixed" title="My Shipments" text="View, edit, and cancel requests" />
+        </Link>
+        <Link to="/customer/payments" className="block">
+          <QuickLink icon={CreditCard} tone="bg-primary-fixed text-on-primary-fixed" title="Billing Central" text="Payment history and invoices" />
+        </Link>
       </div>
 
       {(requests?.data || []).length > 0 && (
@@ -190,7 +196,11 @@ export function CustomerDashboard() {
           <h2 className="mb-4 text-xl font-semibold text-primary-container">Recent Requests</h2>
           <div className="space-y-3">
             {(requests?.data || []).slice(0, 4).map((req) => (
-              <div key={req.id} className="flex items-center justify-between rounded-lg border border-outline-variant/50 px-4 py-3">
+              <Link
+                key={req.id}
+                to="/customer/shipments"
+                className="flex items-center justify-between rounded-lg border border-outline-variant/50 px-4 py-3 transition hover:bg-surface-container-low"
+              >
                 <div>
                   <p className="font-semibold text-primary">{req.id}</p>
                   <p className="text-sm text-on-surface-variant">
@@ -198,7 +208,7 @@ export function CustomerDashboard() {
                   </p>
                 </div>
                 <StatusBadge status={req.status} />
-              </div>
+              </Link>
             ))}
           </div>
         </section>
@@ -225,7 +235,7 @@ function Metric({ icon: Icon, tone, value, label, foot, hint }) {
 
 function QuickLink({ icon: Icon, tone, title, text }) {
   return (
-    <button type="button" className="flex items-center gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-left transition hover:shadow-md">
+    <div className="flex items-center gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-left transition hover:shadow-md">
       <div className={`rounded-xl p-3 ${tone}`}>
         <Icon size={20} />
       </div>
@@ -234,6 +244,6 @@ function QuickLink({ icon: Icon, tone, title, text }) {
         <p className="text-xs text-on-surface-variant">{text}</p>
       </div>
       <ChevronRight className="ml-auto text-on-surface-variant" size={18} />
-    </button>
+    </div>
   );
 }

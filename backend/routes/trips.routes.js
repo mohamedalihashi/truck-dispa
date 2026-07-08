@@ -43,7 +43,8 @@ router.get("/", async (req, res, next) => {
 
 router.patch("/:id/status", requireRole("driver", "dispatcher", "admin", "customer"), validate(statusSchema), async (req, res, next) => {
   try {
-    const result = await db.updateTripStatus(req.params.id, req.body.status, req.user.sub);
+    const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
+    const result = await db.updateTripStatus(req.params.id, req.body.status, req.user.sub, options);
     if (!result) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("trip.status.updated", result.trip);
     if (result.notification) req.app.get("io").emit("notification.created", result.notification);
@@ -55,7 +56,7 @@ router.patch("/:id/status", requireRole("driver", "dispatcher", "admin", "custom
 
 router.post("/:id/accept", requireRole("driver"), async (req, res, next) => {
   try {
-    const result = await db.updateTripStatus(req.params.id, "Accepted", req.user.sub);
+    const result = await db.updateTripStatus(req.params.id, "Accepted", req.user.sub, { driverId: req.user.sub });
     if (!result) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("trip.status.updated", result.trip);
     res.json(result.trip);
@@ -77,10 +78,12 @@ router.post("/:id/reject", requireRole("driver"), async (req, res, next) => {
 
 router.patch("/:id/location", requireRole("driver", "admin"), async (req, res, next) => {
   try {
-    const trip = await db.updateTripLocation(req.params.id, {
-      lat: Number(req.body.lat),
-      lng: Number(req.body.lng)
-    });
+    const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
+    const trip = await db.updateTripLocation(
+      req.params.id,
+      { lat: Number(req.body.lat), lng: Number(req.body.lng) },
+      options
+    );
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("location.updated", { tripId: trip.id, location: trip.lastLocation });
     res.json(trip);
@@ -94,10 +97,12 @@ router.post("/:id/proof", requireRole("driver", "admin"), upload.single("proof")
     const deliveryProofUrl = req.file
       ? `/uploads/${path.basename(req.file.filename)}`
       : req.body.deliveryProofUrl || "mock://proof-uploaded";
-    const trip = await db.uploadTripProof(req.params.id, {
-      deliveryProofUrl,
-      signatureUrl: req.body.signatureUrl
-    });
+    const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
+    const trip = await db.uploadTripProof(
+      req.params.id,
+      { deliveryProofUrl, signatureUrl: req.body.signatureUrl },
+      options
+    );
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     res.json(trip);
   } catch (error) {

@@ -53,7 +53,8 @@ router.post("/", requireRole("admin", "dispatcher"), validate(truckSchema), asyn
 
 router.patch("/:id", requireRole("admin", "dispatcher", "driver"), async (req, res, next) => {
   try {
-    const truck = await db.updateTruck(req.params.id, req.body);
+    const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
+    const truck = await db.updateTruck(req.params.id, req.body, options);
     if (!truck) return res.status(404).json({ message: "Truck not found" });
     res.json(truck);
   } catch (error) {

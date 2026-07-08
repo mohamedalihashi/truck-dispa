@@ -1,0 +1,252 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  dispatcher
+  customer
+  driver
+
+  @@map("user_role")
+}
+
+enum TruckStatus {
+  Available
+  Busy
+  Maintenance
+
+  @@map("truck_status")
+}
+
+enum RequestStatus {
+  Pending
+  Assigned
+  Accepted
+  Arrived_Pickup @map("Arrived Pickup")
+  Loaded
+  In_Transit     @map("In Transit")
+  Delivered
+  Cancelled
+
+  @@map("request_status")
+}
+
+enum TripStatus {
+  Pending
+  Assigned
+  Accepted
+  Arrived_Pickup @map("Arrived Pickup")
+  Loaded
+  In_Transit     @map("In Transit")
+  Delivered
+  Cancelled
+  Delayed
+
+  @@map("trip_status")
+}
+
+enum PaymentStatus {
+  Pending
+  Paid
+  Failed
+  Refunded
+
+  @@map("payment_status")
+}
+
+// ─── Models ──────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  phone        String?
+  status       String   @default("Active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  truck                 Truck?
+  cargoRequestsAsCustomer  CargoRequest[] @relation("CargoRequestCustomer")
+  cargoRequestsAsDriver    CargoRequest[] @relation("CargoRequestDriver")
+  cargoRequestsAsDispatcher CargoRequest[] @relation("CargoRequestDispatcher")
+  tripsAsCustomer       Trip[]         @relation("TripCustomer")
+  tripsAsDriver         Trip[]         @relation("TripDriver")
+  tripsAsDispatcher     Trip[]         @relation("TripDispatcher")
+  notifications         Notification[]
+  paymentsAsCustomer    Payment[]      @relation("PaymentCustomer")
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model TruckType {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("truck_types")
+}
+
+model Truck {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  truckNumber String      @map("truck_number")
+  plateNumber String      @unique @map("plate_number")
+  capacity    String
+  truckType   String      @map("truck_type")
+  driverId    String      @unique @map("driver_id") @db.Uuid
+  status      TruckStatus @default(Available)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  driver        User           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  cargoRequests CargoRequest[]
+  trips         Trip[]
+
+  @@map("trucks")
+}
+
+model CargoRequest {
+  id                  String        @id
+  customerId          String        @map("customer_id") @db.Uuid
+  pickup              String
+  destination         String
+  truckType           String        @map("truck_type")
+  weight              String
+  description         String
+  receiver            String?
+  sender              String?
+  specialInstructions String?       @map("special_instructions")
+  status              RequestStatus @default(Pending)
+  driverId            String?       @map("driver_id") @db.Uuid
+  truckId             String?       @map("truck_id") @db.Uuid
+  dispatcherId        String?       @map("dispatcher_id") @db.Uuid
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  customer   User   @relation("CargoRequestCustomer", fields: [customerId], references: [id])
+  driver     User?  @relation("CargoRequestDriver", fields: [driverId], references: [id])
+  dispatcher User?  @relation("CargoRequestDispatcher", fields: [dispatcherId], references: [id])
+  truck      Truck? @relation(fields: [truckId], references: [id])
+  trips      Trip[]
+
+  @@index([status], map: "idx_cargo_requests_status")
+  @@map("cargo_requests")
+}
+
+model Trip {
+  id               String     @id
+  cargoRequestId   String?    @map("cargo_request_id")
+  customerId       String     @map("customer_id") @db.Uuid
+  driverId         String?    @map("driver_id") @db.Uuid
+  dispatcherId     String?    @map("dispatcher_id") @db.Uuid
+  truckId          String?    @map("truck_id") @db.Uuid
+  pickup           String
+  destination      String
+  distance         String?
+  estimatedTime    String?    @map("estimated_time")
+  status           TripStatus @default(Pending)
+  fare             Decimal    @default(0) @db.Decimal(12, 2)
+  deliveryProofUrl String?    @map("delivery_proof_url")
+  signatureUrl     String?    @map("signature_url")
+  lastLat          Float?     @map("last_lat")
+  lastLng          Float?     @map("last_lng")
+  lastLocationAt   DateTime?  @map("last_location_at") @db.Timestamptz()
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  cargoRequest CargoRequest? @relation(fields: [cargoRequestId], references: [id])
+  customer     User          @relation("TripCustomer", fields: [customerId], references: [id])
+  driver       User?         @relation("TripDriver", fields: [driverId], references: [id])
+  dispatcher   User?         @relation("TripDispatcher", fields: [dispatcherId], references: [id])
+  truck        Truck?        @relation(fields: [truckId], references: [id])
+  payments     Payment[]
+
+  @@index([status], map: "idx_trips_status")
+  @@map("trips")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  type      String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read], map: "idx_notifications_user")
+  @@map("notifications")
+}
+
+model Payment {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId     String?       @map("trip_id")
+  customerId String?       @map("customer_id") @db.Uuid
+  amount     Decimal       @db.Decimal(12, 2)
+  status     PaymentStatus @default(Pending)
+  method     String?       @default("card")
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  trip     Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  customer User? @relation("PaymentCustomer", fields: [customerId], references: [id])
+
+  @@map("payments")
+}
+
+model Setting {
+  key       String   @id
+  value     Json     @default("{}")
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@map("settings")
+}
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model VerificationCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  code      String
+  purpose   String
+  payload   Json?
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([email, purpose, expiresAt], map: "idx_verification_codes_lookup")
+  @@map("verification_codes")
+}

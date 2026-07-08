@@ -4,7 +4,7 @@ import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
-import { connectDatabase } from "./config/db.js";
+import { connectDatabase, disconnectDatabase } from "./config/db.js";
 import { db } from "./services/dbService.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -87,16 +87,37 @@ io.on("connection", (socket) => {
 
 try {
   await connectDatabase();
+} catch (error) {
+  console.error("Failed to connect to PostgreSQL:", error.message);
+  process.exit(1);
+}
+
+try {
   const seedResult = await db.seedIfEmpty();
   if (seedResult.seeded) {
     console.log(`PostgreSQL seeded. Demo password: ${seedResult.demoPassword}`);
   }
 } catch (error) {
-  console.error("Failed to connect to PostgreSQL:", error.message);
-  console.error("Start Postgres with: docker compose up -d");
-  process.exit(1);
+  console.warn("Database seed skipped:", error.message);
 }
 
 server.listen(port, () => {
   console.log(`TruckDispatch API running on http://127.0.0.1:${port}`);
 });
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Port ${port} is already in use. Stop the other backend process first.`);
+    process.exit(1);
+  }
+  throw error;
+});
+
+async function shutdown(signal) {
+  console.log(`${signal} received — closing database connections`);
+  await disconnectDatabase();
+  server.close(() => process.exit(0));
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

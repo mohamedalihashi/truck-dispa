@@ -24,7 +24,10 @@ apiClient.interceptors.response.use(
 export const api = {
   health: () => apiClient.get("/health"),
   register: (payload) => apiClient.post("/auth/register", payload),
+  verifyRegister: (payload) => apiClient.post("/auth/register/verify", payload),
   login: (payload) => apiClient.post("/auth/login", payload),
+  verifyLogin: (payload) => apiClient.post("/auth/login/verify", payload),
+  resendCode: (payload) => apiClient.post("/auth/resend-code", payload),
   me: () => apiClient.get("/auth/me"),
   updateProfile: (payload) => apiClient.patch("/auth/me", payload),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }),

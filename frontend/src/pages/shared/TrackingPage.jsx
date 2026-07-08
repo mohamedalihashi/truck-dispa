@@ -48,7 +48,11 @@ export function TrackingPage() {
     <div className="space-y-8">
       <PageHeader
         title="Live Tracking"
-        subtitle="Realtime trip positions and dispatcher status controls."
+        subtitle={
+          user.role === "customer"
+            ? "Track your active shipments in real time."
+            : "Realtime trip positions and dispatcher status controls."
+        }
         actions={
           canManage ? (
             <Link to={`${base}/trips`}>

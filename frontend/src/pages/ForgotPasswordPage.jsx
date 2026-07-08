@@ -7,6 +7,8 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { api } from "../services/api";
 
 export function ForgotPasswordPage() {
+  const [step, setStep] = useState("email");
+  const [pendingEmail, setPendingEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const {
@@ -15,12 +17,30 @@ export function ForgotPasswordPage() {
     formState: { isSubmitting }
   } = useForm();
 
-  async function onSubmit(values) {
+  async function onSendCode(values) {
     setError("");
     setMessage("");
     try {
       const result = await api.forgotPassword(values.email);
-      setMessage(result.message || "Reset instructions sent.");
+      setPendingEmail(values.email);
+      setStep("reset");
+      setMessage(result.message || "Reset code sent. Check your inbox.");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function onReset(values) {
+    setError("");
+    setMessage("");
+    try {
+      const result = await api.resetPassword({
+        email: pendingEmail,
+        code: values.code,
+        password: values.password
+      });
+      setMessage(result.message || "Password reset successfully.");
+      setStep("done");
     } catch (err) {
       setError(err.message);
     }
@@ -42,29 +62,59 @@ export function ForgotPasswordPage() {
           </Link>
           <h1 className="text-3xl font-bold text-primary">Reset password</h1>
           <p className="mt-2 text-sm text-on-surface-variant">
-            Enter your email and we&apos;ll queue a password reset for your account.
+            {step === "email"
+              ? "Enter your email and we'll send a verification code."
+              : "Enter the code from your email and choose a new password."}
           </p>
 
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)}>
-            <label className="block text-sm">
-              <span className="mb-1.5 block font-medium text-on-surface-variant">Email</span>
-              <input className="stitch-input" type="email" {...register("email", { required: true })} />
-            </label>
-            {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
-            {message && (
+          {step === "email" ? (
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSendCode)}>
+              <label className="block text-sm">
+                <span className="mb-1.5 block font-medium text-on-surface-variant">Email</span>
+                <input className="stitch-input" type="email" {...register("email", { required: true })} />
+              </label>
+              {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
+              <Button className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Sending…" : "Send reset code"}
+              </Button>
+            </form>
+          ) : step === "reset" ? (
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit(onReset)}>
+              <label className="block text-sm">
+                <span className="mb-1.5 block font-medium text-on-surface-variant">6-digit code</span>
+                <input
+                  className="stitch-input text-center tracking-[0.4em]"
+                  maxLength={6}
+                  {...register("code", { required: true, minLength: 6, maxLength: 6 })}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1.5 block font-medium text-on-surface-variant">New password</span>
+                <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
+              </label>
+              {message && <p className="rounded-lg bg-primary-fixed px-3 py-2 text-sm text-primary-container">{message}</p>}
+              {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
+              <Button className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Resetting…" : "Reset password"}
+              </Button>
+            </form>
+          ) : (
+            <div className="mt-6 space-y-4">
               <p className="rounded-lg bg-primary-fixed px-3 py-2 text-sm text-primary-container">{message}</p>
-            )}
-            <Button className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Sending…" : "Send reset link"}
-            </Button>
-          </form>
+              <Link to="/login">
+                <Button className="w-full">Back to sign in</Button>
+              </Link>
+            </div>
+          )}
 
-          <p className="mt-6 text-center text-sm text-on-surface-variant">
-            Remembered it?{" "}
-            <Link className="font-semibold text-secondary-container hover:underline" to="/login">
-              Back to sign in
-            </Link>
-          </p>
+          {step !== "done" && (
+            <p className="mt-6 text-center text-sm text-on-surface-variant">
+              Remembered it?{" "}
+              <Link className="font-semibold text-secondary-container hover:underline" to="/login">
+                Back to sign in
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

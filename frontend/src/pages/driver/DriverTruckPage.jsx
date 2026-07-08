@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
@@ -7,23 +8,33 @@ import { Truck } from "lucide-react";
 
 export function DriverTruckPage() {
   const { user } = useAuth();
-  const { data } = useTrucks();
+  const { data, isLoading } = useTrucks();
   const mutations = useTruckMutations();
+  const [message, setMessage] = useState("");
   const truck = (data?.data || []).find((item) => item.driverId === user.id);
 
   async function setStatus(status) {
     if (!truck) return;
+    setMessage("");
     try {
       await mutations.update.mutateAsync({ id: truck.id, payload: { status } });
+      setMessage(`Truck status set to ${status}`);
     } catch (err) {
-      alert(err.message);
+      setMessage(err.message);
     }
   }
 
   return (
     <div className="space-y-8">
-      <PageHeader title="My Truck" subtitle="Driver and truck are one linked account." />
-      {!truck ? (
+      <PageHeader title="My Truck" subtitle="View truck details and update availability status." />
+      {message && (
+        <p className="rounded-xl border border-primary-fixed bg-primary-fixed/40 px-4 py-3 text-sm text-primary-container">
+          {message}
+        </p>
+      )}
+      {isLoading ? (
+        <p className="text-sm text-on-surface-variant">Loading truck…</p>
+      ) : !truck ? (
         <p className="text-sm text-on-surface-variant">No truck linked to this driver.</p>
       ) : (
         <section className="max-w-xl rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
