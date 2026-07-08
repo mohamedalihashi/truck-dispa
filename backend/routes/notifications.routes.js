@@ -1,0 +1,32 @@
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.js";
+import { db } from "../services/dbService.js";
+
+const router = Router();
+
+router.use(requireAuth);
+
+router.get("/", async (req, res, next) => {
+  try {
+    const result = await db.listNotifications({
+      userId: req.user.role === "admin" ? undefined : req.user.sub,
+      page: req.query.page,
+      limit: req.query.limit
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/:id/read", async (req, res, next) => {
+  try {
+    const notification = await db.markNotificationRead(req.params.id);
+    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    res.json(notification);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
