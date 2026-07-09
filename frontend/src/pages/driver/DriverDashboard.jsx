@@ -10,6 +10,7 @@ import {
   Package,
   Plus,
   RefreshCw,
+  Star,
   Truck,
   Wallet
 } from "lucide-react";
@@ -18,18 +19,20 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Button } from "../../components/ui/Button";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { useAuth } from "../../contexts/AuthContext";
-import { useDashboard, useTripActions, useTrips } from "../../hooks/useApi";
+import { useDashboard, useTripActions, useTripFeedback, useTrips } from "../../hooks/useApi";
 import { money, nextTripStatus } from "../../utils/helpers";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { FleetMap } from "../../components/map/FleetMap";
+import { TripFeedbackPanel } from "../../components/TripFeedbackPanel";
 import { randomSomaliaCoords } from "../../utils/geo";
 
 export function DriverDashboard() {
   const { user } = useAuth();
   const { data: stats } = useDashboard();
   const { data: trips } = useTrips();
+  const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 6 });
   const actions = useTripActions();
   const fileRef = useRef(null);
   const qc = useQueryClient();
@@ -67,7 +70,7 @@ export function DriverDashboard() {
         </p>
       )}
 
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         <CenterMetric
           icon={Truck}
           tone="bg-primary-fixed-dim text-primary-container"
@@ -91,6 +94,12 @@ export function DriverDashboard() {
           tone="bg-secondary-container text-on-secondary"
           value={money(stats?.revenue)}
           label="Earnings (Weekly)"
+        />
+        <CenterMetric
+          icon={Star}
+          tone="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+          value={feedback?.summary?.avgRating ?? "—"}
+          label="Your Avg Rating"
         />
       </div>
 
@@ -275,6 +284,27 @@ export function DriverDashboard() {
         </Link>
       </div>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadPod} />
+
+      <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center justify-between border-b border-outline-variant px-6 py-5">
+          <div className="flex items-center gap-2">
+            <Star size={20} className="text-amber-500" />
+            <h3 className="text-xl font-semibold text-on-surface">Customer Reviews</h3>
+          </div>
+          <span className="text-sm text-on-surface-variant">Feedback on your deliveries</span>
+        </div>
+        <div className="p-6">
+          <TripFeedbackPanel
+            items={feedback?.data || []}
+            summary={feedback?.summary}
+            loading={feedbackLoading}
+            showCustomer
+            emptyTitle="No reviews yet"
+            emptyText="When customers rate delivered goods, reviews show up here."
+            limit={6}
+          />
+        </div>
+      </section>
     </div>
   );
 }

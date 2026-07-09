@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   ArrowRight,
   BookOpen,
@@ -17,9 +17,7 @@ import {
   UserCog,
   Video
 } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
-import { ThemeToggle } from "../components/ThemeToggle";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, roleHome } from "../utils/helpers";
+import { PublicSiteHeader } from "../components/PublicSiteHeader";
 
 const HERO_IMG =
   "https://lh3.googleusercontent.com/aida-public/AB6AXuD-PtSvT2g9IZwLnN_PKPkoAo1HIWoase3vkYDZZGwouK-l2S1hu7RPs__gfEY0MpbJPsac9i1smuEi2_Wc2Pu_B74WpiwnSGCbKnjXd5syzbcESK9mhfo6810W18L_UJWOnUL68mGj8bzl4hNAPWiTRr9gTZK9C3Hfukrm7nQucgn--mW2LBPrYh9_EkC2EpRpL2G9ba6EurGqbDWpSGYfu0KfQHe2CwKkvPqsO1YbSgeM3lPBLA7jSZQctcWKh95UBlz_-omM_c8";
@@ -30,69 +28,11 @@ const AVATARS = [
 ];
 
 export function LandingPage() {
-  const { login, isAuthenticated, user } = useAuth();
-  const navigate = useNavigate();
-
-  async function quick(email) {
-    try {
-      const result = await login({ email, password: DEMO_PASSWORD });
-      if (result.verificationRequired) {
-        navigate("/login", {
-          state: { email, password: DEMO_PASSWORD, step: "verify" }
-        });
-        return;
-      }
-      navigate(roleHome(result.user.role));
-    } catch (err) {
-      alert(err.message);
-    }
-  }
-
   return (
     <div className="bg-background text-on-surface selection:bg-secondary-fixed selection:text-on-secondary-fixed">
-      <header className="glass-effect fixed inset-x-0 top-0 z-50 h-20 px-6 md:px-12">
-        <nav className="mx-auto flex h-full max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-secondary-container p-2 text-white">
-              <Truck size={22} />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-primary">TruckDispatch</span>
-          </div>
-          <div className="hidden items-center gap-8 lg:flex">
-            <a className="text-sm font-semibold text-on-surface-variant hover:text-secondary" href="#features">Features</a>
-            <a className="text-sm font-semibold text-on-surface-variant hover:text-secondary" href="#process">How it Works</a>
-            <a className="text-sm font-semibold text-on-surface-variant hover:text-secondary" href="#testimonials">Clients</a>
-            <div className="h-6 w-px bg-outline-variant" />
-            <ThemeToggle />
-            <div className="h-6 w-px bg-outline-variant" />
-            {isAuthenticated ? (
-              <button
-                type="button"
-                onClick={() => navigate(roleHome(user.role))}
-                className="rounded-lg bg-secondary-container px-6 py-2.5 text-sm font-semibold text-on-secondary shadow-md"
-              >
-                Open Dashboard
-              </button>
-            ) : (
-              <>
-                <Link className="text-sm font-semibold text-primary hover:text-secondary-container" to="/login">Log In</Link>
-                <Link
-                  to="/register"
-                  className="rounded-lg bg-secondary-container px-6 py-2.5 text-sm font-semibold text-on-secondary shadow-md transition hover:shadow-lg active:scale-95"
-                >
-                  Book a Truck
-                </Link>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2 lg:hidden">
-            <ThemeToggle />
-            <Link to="/login" className="rounded-lg border border-outline-variant px-4 py-2 text-sm font-semibold">Log In</Link>
-          </div>
-        </nav>
-      </header>
+      <PublicSiteHeader variant="landing" />
 
-      <main className="pt-20">
+      <main className="pt-[calc(4rem+env(safe-area-inset-top))] sm:pt-20">
         <section className="hero-gradient relative flex min-h-[870px] items-center overflow-hidden">
           <div className="pointer-events-none absolute inset-0 opacity-10">
             <div className="absolute right-[-10%] top-20 h-[600px] w-[600px] rounded-full bg-secondary-container blur-[120px]" />
@@ -315,28 +255,65 @@ export function LandingPage() {
         <section className="relative overflow-hidden bg-primary-container py-24">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(254,107,0,0.08),transparent)]" />
           <div className="relative z-10 mx-auto max-w-7xl px-6 text-center text-white">
-            <h2 className="mb-12 text-[32px] font-bold">Ready to Get Started?</h2>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary-fixed-dim">
+              Somalia Logistics Network
+            </p>
+            <h2 className="mt-3 text-[32px] font-bold">Join the TruckDispatch Marketplace</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-on-primary-container">
+              Book shipments, assign drivers, and track deliveries across Somalia — one platform for every role in your supply chain.
+            </p>
+            <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
               {[
-                [User, "Customer", "Ship your goods anywhere with ease.", "customer@truckdispatch.local", "Register Now →"],
-                [Truck, "Driver", "Find jobs and manage trips.", "driver@truckdispatch.local", "Apply Today →"],
-                [UserCog, "Dispatcher", "Oversee and optimize logistics.", "dispatcher@truckdispatch.local", "Login →"],
-                [Shield, "Admin", "Manage users, trucks, and reports.", "wllhero145@gmail.com", "Login →"]
-              ].map(([Icon, title, text, email, cta]) => (
-                <button
+                {
+                  icon: User,
+                  title: "Customer",
+                  text: "Book trucks, track shipments, and manage payments from one dashboard.",
+                  to: "/register",
+                  cta: "Create Account"
+                },
+                {
+                  icon: Truck,
+                  title: "Driver",
+                  text: "View assigned jobs, update trip status, and upload proof of delivery.",
+                  to: "/login",
+                  cta: "Driver Sign In"
+                },
+                {
+                  icon: UserCog,
+                  title: "Dispatcher",
+                  text: "Match cargo with available trucks and monitor fleet operations in real time.",
+                  to: "/login",
+                  cta: "Dispatch Console"
+                },
+                {
+                  icon: Shield,
+                  title: "Admin",
+                  text: "Manage users, trucks, reports, and platform settings for your organization.",
+                  to: "/login",
+                  cta: "Admin Portal"
+                }
+              ].map(({ icon: Icon, title, text, to, cta }) => (
+                <Link
                   key={title}
-                  type="button"
-                  onClick={() => quick(email)}
+                  to={to}
                   className="group rounded-3xl border border-white/10 bg-white/10 p-8 text-left backdrop-blur transition hover:bg-white/20"
                 >
                   <Icon className="mb-4 block text-secondary-fixed-dim" size={36} />
                   <h4 className="mb-2 text-xl font-semibold">{title}</h4>
                   <p className="mb-6 text-sm text-on-primary-container">{text}</p>
-                  <span className="text-sm font-semibold group-hover:underline">{cta}</span>
-                </button>
+                  <span className="inline-flex items-center gap-1 text-sm font-semibold group-hover:underline">
+                    {cta}
+                    <ArrowRight size={16} className="transition group-hover:translate-x-1" />
+                  </span>
+                </Link>
               ))}
             </div>
-            <p className="mt-8 text-sm text-on-primary-container">Demo password: {DEMO_PASSWORD}</p>
+            <p className="mt-10 text-sm text-on-primary-container">
+              Already registered?{" "}
+              <Link to="/login" className="font-semibold text-secondary-fixed-dim underline-offset-4 hover:underline">
+                Sign in to your account
+              </Link>
+            </p>
           </div>
         </section>
       </main>

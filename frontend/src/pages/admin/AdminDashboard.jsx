@@ -3,6 +3,7 @@ import {
   FileText,
   MapPin,
   Package,
+  Star,
   Truck,
   Users,
   Wallet
@@ -25,8 +26,9 @@ import { MetricCard } from "../../components/ui/MetricCard";
 import { DataTable } from "../../components/ui/DataTable";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
-import { useAuditLogs, useDashboard, useReports, useTrips, useUsers } from "../../hooks/useApi";
+import { useAuditLogs, useDashboard, useReports, useTripFeedback, useTrips, useUsers } from "../../hooks/useApi";
 import { money } from "../../utils/helpers";
+import { TripFeedbackPanel, StarRatingDisplay } from "../../components/TripFeedbackPanel";
 
 const COLORS = ["#fe6b00", "#0d1c32", "#5979ff", "#ba1a1a", "#27ae60"];
 
@@ -34,6 +36,7 @@ export function AdminDashboard() {
   const { data: stats } = useDashboard();
   const { data: reports } = useReports("monthly");
   const { data: trips } = useTrips({ limit: 8 });
+  const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 10 });
   const { data: drivers } = useUsers({ role: "driver", limit: 8 });
   const { data: audit } = useAuditLogs();
   const recentActivity = (audit?.data || []).slice(0, 5);
@@ -200,9 +203,48 @@ export function AdminDashboard() {
                 render: (row) => `${row.pickup} → ${row.destination}`
               },
               { key: "status", label: "Status", type: "status" },
-              { key: "driver", label: "Driver" }
+              { key: "driver", label: "Driver" },
+              {
+                key: "feedback",
+                label: "Feedback",
+                render: (row) =>
+                  row.feedback ? (
+                    <div className="space-y-1 text-xs">
+                      <div>
+                        Delivery: <StarRatingDisplay value={row.feedback.rating} size={12} />
+                      </div>
+                      {row.feedback.productRating ? (
+                        <div>
+                          Goods: <StarRatingDisplay value={row.feedback.productRating} size={12} />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-on-surface-variant">—</span>
+                  )
+              }
             ]}
           />
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)] xl:col-span-12">
+          <div className="border-b border-outline-variant px-6 py-5">
+            <div className="flex items-center gap-2">
+              <Star size={20} className="text-amber-500" />
+              <h2 className="text-xl font-semibold text-primary-container">Customer Feedback</h2>
+            </div>
+            <p className="mt-1 text-sm text-on-surface-variant">All ratings on delivered goods across the platform</p>
+          </div>
+          <div className="p-6">
+            <TripFeedbackPanel
+              items={feedback?.data || []}
+              summary={feedback?.summary}
+              loading={feedbackLoading}
+              showDriver
+              showCustomer
+              limit={10}
+            />
+          </div>
         </section>
       </div>
 

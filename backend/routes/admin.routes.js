@@ -9,7 +9,14 @@ router.use(requirePasswordChanged);
 
 router.get("/payments", requireRole("admin", "customer"), async (req, res, next) => {
   try {
-    res.json(await db.listPayments({ page: req.query.page, limit: req.query.limit }));
+    const customerId = req.user.role === "customer" ? req.user.sub : undefined;
+    res.json(
+      await db.listPayments({
+        page: req.query.page,
+        limit: req.query.limit,
+        customerId
+      })
+    );
   } catch (error) {
     next(error);
   }
@@ -33,11 +40,13 @@ router.put("/settings/:key", requireRole("admin"), async (req, res, next) => {
 
 router.post("/payments", requireRole("admin"), async (req, res, next) => {
   try {
-    const { tripId, customerId, amount, status, method } = req.body;
+    const { tripId, customerId, amount, status, method, description } = req.body;
     if (!customerId || amount == null) {
       return res.status(400).json({ message: "customerId and amount are required" });
     }
-    const payment = await db.createPayment({ tripId, customerId, amount, status, method });
+    const payment = await db.createPayment({ tripId, customerId, amount, status, method, description });
+    const io = req.app.get("io");
+    if (io) io.emit("payment.updated", payment);
     res.status(201).json(payment);
   } catch (error) {
     next(error);
@@ -56,10 +65,20 @@ router.delete("/payments/:id", requireRole("admin"), async (req, res, next) => {
 
 router.patch("/payments/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ message: "status is required" });
-    const payment = await db.updatePayment(req.params.id, { status });
+    const { status, amount, description, amountPaid, method } = req.body;
+    if (!status && amount == null && description == null && amountPaid == null && !method) {
+      return res.status(400).json({ message: "No payment fields to update" });
+    }
+    const payment = await db.updatePayment(req.params.id, {
+      status,
+      amount,
+      description,
+      amountPaid,
+      method,
+    });
     if (!payment) return res.status(404).json({ message: "Payment not found" });
+    const io = req.app.get("io");
+    if (io) io.emit("payment.updated", payment);
     res.json(payment);
   } catch (error) {
     next(error);

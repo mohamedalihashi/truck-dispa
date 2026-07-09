@@ -15,6 +15,7 @@ const createSchema = z.object({
   receiver: z.string().optional(),
   sender: z.string().optional(),
   specialInstructions: z.string().optional(),
+  preferredPickupDate: z.string().optional(),
   customerId: z.string().uuid().optional()
 });
 
@@ -22,6 +23,16 @@ const assignSchema = z.object({
   driverId: z.string().uuid(),
   truckId: z.string().uuid(),
   dispatcherId: z.string().uuid().optional()
+});
+
+const quoteSchema = z.object({
+  quotedPrice: z.coerce.number().positive(),
+  quotedEstimatedTime: z.string().min(1),
+  quoteNotes: z.string().optional()
+});
+
+const rejectQuoteSchema = z.object({
+  note: z.string().optional()
 });
 
 router.use(requireAuth);
@@ -80,6 +91,62 @@ router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(cr
     next(error);
   }
 });
+
+router.patch(
+  "/:id/quote",
+  requireRole("dispatcher", "admin"),
+  validate(quoteSchema),
+  async (req, res, next) => {
+    try {
+      const result = await db.submitCargoQuote(req.params.id, {
+        quotedPrice: req.body.quotedPrice,
+        quotedEstimatedTime: req.body.quotedEstimatedTime,
+        quoteNotes: req.body.quoteNotes,
+        dispatcherId: req.user.sub
+      });
+      if (!result) return res.status(404).json({ message: "Cargo request not found" });
+      req.app.get("io").emit("quote.sent", result.request);
+      if (result.notification) req.app.get("io").emit("notification.created", result.notification);
+      res.json(result.request);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  "/:id/quote/accept",
+  requireRole("customer"),
+  async (req, res, next) => {
+    try {
+      const request = await db.acceptCargoQuote(req.params.id, { customerId: req.user.sub });
+      if (!request) return res.status(404).json({ message: "Cargo request not found" });
+      req.app.get("io").emit("quote.accepted", request);
+      res.json(request);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post(
+  "/:id/quote/reject",
+  requireRole("customer"),
+  validate(rejectQuoteSchema),
+  async (req, res, next) => {
+    try {
+      const request = await db.rejectCargoQuote(req.params.id, {
+        customerId: req.user.sub,
+        note: req.body.note
+      });
+      if (!request) return res.status(404).json({ message: "Cargo request not found" });
+      req.app.get("io").emit("quote.rejected", request);
+      res.json(request);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.patch(
   "/:id/assign",

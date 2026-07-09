@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { Truck } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { PublicSiteHeader } from "../components/PublicSiteHeader";
 import { api } from "../services/api";
 
 export function ForgotPasswordPage() {
@@ -52,11 +52,9 @@ export function ForgotPasswordPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div className="absolute right-4 top-4 z-20">
-        <ThemeToggle className="text-white hover:bg-white/10" />
-      </div>
+      <PublicSiteHeader variant="auth" className="border-transparent bg-transparent" />
       <div className="hero-gradient absolute inset-0" />
-      <div className="relative mx-auto flex min-h-screen max-w-lg items-center px-4 py-10">
+      <div className="relative mx-auto flex min-h-screen max-w-lg items-center px-4 pb-[env(safe-area-inset-bottom)] pt-[calc(5rem+env(safe-area-inset-top))] lg:py-10">
         <div className="auth-card w-full p-6 md:p-8">
           <Link to="/" className="mb-6 inline-flex items-center gap-2 text-xl font-bold text-primary">
             <span className="rounded-lg bg-secondary-container p-2 text-white">

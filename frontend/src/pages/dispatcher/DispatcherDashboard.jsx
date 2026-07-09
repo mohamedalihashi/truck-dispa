@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AlertCircle, ArrowRight, CheckCircle2, FileText, Filter, Maximize2, Trash2, Truck } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, FileText, Filter, Maximize2, Star, Trash2, Truck } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
@@ -11,12 +11,14 @@ import {
   useCargoRequests,
   useDashboard,
   useTripActions,
+  useTripFeedback,
   useTrips,
   useTrucks
 } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
 import { CANCELABLE_REQUEST_STATUSES, nextTripStatus } from "../../utils/helpers";
 import { FleetMap } from "../../components/map/FleetMap";
+import { TripFeedbackPanel } from "../../components/TripFeedbackPanel";
 import { randomSomaliaCoords } from "../../utils/geo";
 
 export function DispatcherDashboard() {
@@ -26,6 +28,7 @@ export function DispatcherDashboard() {
   const { data: requests } = useCargoRequests({ status: "Pending" });
   const { data: trucks } = useTrucks({ status: "Available" });
   const { data: trips } = useTrips();
+  const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 8 });
   const assign = useAssignCargo();
   const cancel = useCancelCargo();
   const tripActions = useTripActions();
@@ -231,6 +234,26 @@ export function DispatcherDashboard() {
           </div>
         </section>
       </div>
+
+      <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center justify-between border-b border-outline-variant px-6 py-5">
+          <div className="flex items-center gap-2">
+            <Star size={20} className="text-amber-500" />
+            <h2 className="text-xl font-semibold text-on-surface">Customer Feedback</h2>
+          </div>
+          <span className="text-sm text-on-surface-variant">Reviews on your dispatched trips</span>
+        </div>
+        <div className="p-6">
+          <TripFeedbackPanel
+            items={feedback?.data || []}
+            summary={feedback?.summary}
+            loading={feedbackLoading}
+            showDriver
+            showCustomer
+            limit={8}
+          />
+        </div>
+      </section>
 
       {selected && (
         <Modal title={`Assign ${selected.id}`} onClose={() => setSelected(null)}>

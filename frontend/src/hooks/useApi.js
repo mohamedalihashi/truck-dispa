@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
 import { useSocket } from "../contexts/SocketContext";
+import { useAuth } from "../contexts/AuthContext";
+import { isRealtimeSocketEnabled } from "../config/api.js";
 import { useEffect } from "react";
 
 export function useDashboard() {
@@ -18,6 +20,14 @@ export function useTrips(params = {}, options = {}) {
   return useQuery({
     queryKey: ["trips", params],
     queryFn: () => api.listTrips(params),
+    ...options
+  });
+}
+
+export function useTripFeedback(params = {}, options = {}) {
+  return useQuery({
+    queryKey: ["trip-feedback", params],
+    queryFn: () => api.listTripFeedback(params),
     ...options
   });
 }
@@ -87,6 +97,7 @@ export function useAuditLogs() {
 export function useRealtimeInvalidation() {
   const qc = useQueryClient();
   const { events } = useSocket();
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (!events[0]) return;
@@ -96,7 +107,28 @@ export function useRealtimeInvalidation() {
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     qc.invalidateQueries({ queryKey: ["reports"] });
+    qc.invalidateQueries({ queryKey: ["trip-feedback"] });
+    qc.invalidateQueries({ queryKey: ["payments"] });
   }, [events[0]?.id, qc]);
+
+  // Vercel has no WebSocket server — poll API every 20s when logged in.
+  useEffect(() => {
+    if (!isAuthenticated || isRealtimeSocketEnabled()) return;
+
+    const invalidateAll = () => {
+      qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+      qc.invalidateQueries({ queryKey: ["trips"] });
+      qc.invalidateQueries({ queryKey: ["trucks"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
+      qc.invalidateQueries({ queryKey: ["trip-feedback"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+    };
+
+    const timer = setInterval(invalidateAll, 20_000);
+    return () => clearInterval(timer);
+  }, [isAuthenticated, qc]);
 }
 
 export function useCreateCargo() {
@@ -176,10 +208,15 @@ export function usePaymentMutations() {
     qc.invalidateQueries({ queryKey: ["payments"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     qc.invalidateQueries({ queryKey: ["reports"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
   };
   return {
     update: useMutation({
-      mutationFn: ({ id, status }) => api.updatePayment(id, status),
+      mutationFn: ({ id, ...payload }) => api.updatePayment(id, payload),
+      onSuccess: invalidate
+    }),
+    updateCustomer: useMutation({
+      mutationFn: ({ id, ...payload }) => api.updateCustomerPayment(id, payload),
       onSuccess: invalidate
     }),
     create: useMutation({
@@ -188,6 +225,10 @@ export function usePaymentMutations() {
     }),
     remove: useMutation({
       mutationFn: (id) => api.deletePayment(id),
+      onSuccess: invalidate
+    }),
+    payWithWaafi: useMutation({
+      mutationFn: (payload) => api.payWithWaafi(payload),
       onSuccess: invalidate
     })
   };
@@ -222,8 +263,32 @@ export function useAssignCargo() {
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
     }
   });
+}
+
+export function useQuoteMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  return {
+    submit: useMutation({
+      mutationFn: ({ id, payload }) => api.submitCargoQuote(id, payload),
+      onSuccess: invalidate
+    }),
+    accept: useMutation({
+      mutationFn: (id) => api.acceptCargoQuote(id),
+      onSuccess: invalidate
+    }),
+    reject: useMutation({
+      mutationFn: ({ id, note }) => api.rejectCargoQuote(id, { note }),
+      onSuccess: invalidate
+    })
+  };
 }
 
 export function useTripActions() {

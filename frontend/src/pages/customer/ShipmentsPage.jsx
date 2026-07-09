@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import { useCancelCargo, useCargoRequests, useTrips, useUpdateCargo } from "../../hooks/useApi";
+import { TripFeedbackForm } from "../../components/TripFeedbackForm";
+import { resolveUploadUrl } from "../../config/api.js";
+import { useCancelCargo, useCargoRequests, useQuoteMutations, useTrips, useUpdateCargo } from "../../hooks/useApi";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { CANCELABLE_REQUEST_STATUSES } from "../../utils/helpers";
+import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES } from "../../utils/helpers";
+import { QuoteReviewPanel } from "../../components/QuoteReviewPanel";
 
 export function ShipmentsPage() {
   const location = useLocation();
@@ -19,6 +22,7 @@ export function ShipmentsPage() {
   const [viewingTrip, setViewingTrip] = useState(null);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [quoteError, setQuoteError] = useState("");
 
   const { data: trips, isLoading: tripsLoading } = useTrips();
   const { data: requests, isLoading: requestsLoading } = useCargoRequests({
@@ -26,7 +30,10 @@ export function ShipmentsPage() {
   });
   const updateCargo = useUpdateCargo();
   const cancelCargo = useCancelCargo();
+  const quoteActions = useQuoteMutations();
   const qc = useQueryClient();
+
+  const pendingQuotes = (requests?.data || []).filter((r) => r.status === "Awaiting Approval");
 
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm();
 
@@ -64,15 +71,44 @@ export function ShipmentsPage() {
     }
   }
 
-  async function confirmDelivery(id) {
+  async function confirmDelivery(row) {
     if (!confirm("Confirm that this shipment was delivered?")) return;
     try {
-      await api.updateTripStatus(id, "Delivered");
+      const updated = await api.updateTripStatus(row.id, "Delivered");
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setViewingTrip({ ...row, ...updated, status: "Delivered", feedback: updated.feedback || null });
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  function handleFeedbackSubmitted(updatedTrip) {
+    setViewingTrip(updatedTrip);
+    qc.invalidateQueries({ queryKey: ["trips"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    qc.invalidateQueries({ queryKey: ["reports"] });
+    qc.invalidateQueries({ queryKey: ["trip-feedback"] });
+  }
+
+  async function acceptQuote(id) {
+    setQuoteError("");
+    try {
+      const updated = await quoteActions.accept.mutateAsync(id);
+      setViewingRequest((prev) => (prev?.id === id ? updated : prev));
+    } catch (err) {
+      setQuoteError(err.message);
+    }
+  }
+
+  async function rejectQuote(id, note) {
+    setQuoteError("");
+    try {
+      const updated = await quoteActions.reject.mutateAsync({ id, note });
+      setViewingRequest((prev) => (prev?.id === id ? updated : prev));
+    } catch (err) {
+      setQuoteError(err.message);
     }
   }
 
@@ -96,6 +132,20 @@ export function ShipmentsPage() {
         </p>
       )}
 
+      {pendingQuotes.length > 0 ? (
+        <div className="rounded-xl border border-secondary-container/30 bg-secondary-container/10 p-4">
+          <p className="font-semibold text-on-surface">
+            {pendingQuotes.length} quotation(s) waiting for your approval
+          </p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Review price and delivery time, then accept or reject before dispatch assigns a driver.
+          </p>
+          <Button className="mt-3" onClick={() => setViewingRequest(pendingQuotes[0])}>
+            Review quote
+          </Button>
+        </div>
+      ) : null}
+
       <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant px-6 py-5">
           <h2 className="text-xl font-semibold text-primary-container">Cargo requests</h2>
@@ -105,7 +155,7 @@ export function ShipmentsPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="">All statuses</option>
-            {["Pending", "Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delivered", "Cancelled"].map((s) => (
+            {REQUEST_STATUSES.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
@@ -193,10 +243,21 @@ export function ShipmentsPage() {
                         <Link to="/customer/tracking" className="text-xs font-semibold text-secondary-container hover:underline">
                           Track
                         </Link>
-                        <Button className="px-2 py-1 text-xs" onClick={() => confirmDelivery(row.id)}>
+                        <Button className="px-2 py-1 text-xs" onClick={() => confirmDelivery(row)}>
                           Confirm delivery
                         </Button>
                       </>
+                    )}
+                    {row.status === "Delivered" && !row.feedback && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-amber-600 hover:underline"
+                        onClick={() => setViewingTrip(row)}
+                        title="Rate delivery"
+                      >
+                        <Star size={14} className="fill-amber-400 text-amber-400" />
+                        Rate goods
+                      </button>
                     )}
                   </div>
                 )
@@ -207,12 +268,36 @@ export function ShipmentsPage() {
       </section>
 
       {viewingRequest && (
-        <Modal title={`Request ${viewingRequest.id}`} onClose={() => setViewingRequest(null)} wide>
-          <dl className="grid gap-3 sm:grid-cols-2 text-sm">
+        <Modal title={`Request ${viewingRequest.id}`} onClose={() => { setViewingRequest(null); setQuoteError(""); }} wide>
+          {viewingRequest.status === "Awaiting Approval" ? (
+            <QuoteReviewPanel
+              request={viewingRequest}
+              onAccept={acceptQuote}
+              onReject={rejectQuote}
+              loading={quoteActions.accept.isPending || quoteActions.reject.isPending}
+              error={quoteError}
+            />
+          ) : null}
+
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
             <Detail label="Route" value={`${viewingRequest.pickup} → ${viewingRequest.destination}`} className="sm:col-span-2" />
             <Detail label="Status" value={<StatusBadge status={viewingRequest.status} />} />
+            <Detail
+              label="Preferred pickup"
+              value={
+                viewingRequest.preferredPickupDate
+                  ? new Date(viewingRequest.preferredPickupDate).toLocaleDateString()
+                  : "—"
+              }
+            />
             <Detail label="Truck type" value={viewingRequest.truckType} />
             <Detail label="Weight" value={viewingRequest.weight} />
+            {viewingRequest.quotedPrice != null ? (
+              <Detail label="Quoted price" value={`$${Number(viewingRequest.quotedPrice).toLocaleString()}`} />
+            ) : null}
+            {viewingRequest.quotedEstimatedTime ? (
+              <Detail label="Quoted ETA" value={viewingRequest.quotedEstimatedTime} />
+            ) : null}
             <Detail label="Driver" value={viewingRequest.driver || "—"} />
             <Detail label="Truck" value={viewingRequest.truck || "—"} />
             <Detail label="Description" value={viewingRequest.description} className="sm:col-span-2" />
@@ -248,7 +333,30 @@ export function ShipmentsPage() {
               }
               className="sm:col-span-2"
             />
+            {viewingTrip.deliveryProofUrl && !viewingTrip.deliveryProofUrl.startsWith("mock://") ? (
+              <Detail
+                label="Proof of delivery"
+                value={
+                  <a
+                    href={resolveUploadUrl(viewingTrip.deliveryProofUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-secondary-container hover:underline"
+                  >
+                    View delivery photo
+                  </a>
+                }
+                className="sm:col-span-2"
+              />
+            ) : null}
           </dl>
+
+          {viewingTrip.status === "Delivered" && (
+            <div className="mt-6">
+              <TripFeedbackForm trip={viewingTrip} onSubmitted={handleFeedbackSubmitted} />
+            </div>
+          )}
+
           <div className="mt-4 flex justify-end gap-2">
             {["In Transit", "Loaded", "Accepted", "Assigned"].includes(viewingTrip.status) && (
               <Link to="/customer/tracking">

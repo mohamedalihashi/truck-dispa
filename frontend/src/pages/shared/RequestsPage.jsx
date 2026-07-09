@@ -12,15 +12,17 @@ import {
   useCargoRequests,
   useCreateCargo,
   useCustomers,
+  useQuoteMutations,
   useTrucks,
   useUpdateCargo
 } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
-import { CANCELABLE_REQUEST_STATUSES } from "../../utils/helpers";
+import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES, money } from "../../utils/helpers";
 
 export function RequestsPage() {
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
+  const [quoting, setQuoting] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -32,6 +34,7 @@ export function RequestsPage() {
   const { data: trucks } = useTrucks();
   const { data: customers } = useCustomers({ enabled: showCreate });
   const assign = useAssignCargo();
+  const quote = useQuoteMutations();
   const cancel = useCancelCargo();
   const create = useCreateCargo();
   const update = useUpdateCargo();
@@ -60,6 +63,29 @@ export function RequestsPage() {
     formState: { isSubmitting: editingForm }
   } = useForm();
 
+  const {
+    register: registerQuote,
+    handleSubmit: handleQuote,
+    reset: resetQuote,
+    formState: { isSubmitting: quotingForm }
+  } = useForm({
+    defaultValues: {
+      quotedPrice: "",
+      quotedEstimatedTime: "",
+      quoteNotes: ""
+    }
+  });
+
+  function openQuote(row) {
+    setQuoting(row);
+    setError("");
+    resetQuote({
+      quotedPrice: row.quotedPrice != null ? String(row.quotedPrice) : "",
+      quotedEstimatedTime: row.quotedEstimatedTime || "",
+      quoteNotes: row.quoteNotes || ""
+    });
+  }
+
   function openAssign(row) {
     setSelected(row);
     setTruckId(fleet.find((t) => t.status === "Available")?.id || fleet[0]?.id || "");
@@ -79,6 +105,23 @@ export function RequestsPage() {
       receiver: row.receiver || "",
       specialInstructions: row.specialInstructions || ""
     });
+  }
+
+  async function onQuote(values) {
+    setError("");
+    try {
+      await quote.submit.mutateAsync({
+        id: quoting.id,
+        payload: {
+          quotedPrice: Number(values.quotedPrice),
+          quotedEstimatedTime: values.quotedEstimatedTime,
+          quoteNotes: values.quoteNotes
+        }
+      });
+      setQuoting(null);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function onAssign() {
@@ -133,7 +176,7 @@ export function RequestsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Cargo Requests"
-        subtitle="Create, view, assign, edit, and cancel marketplace orders."
+        subtitle="Review requests, send quotations, wait for customer approval, then assign drivers."
         actions={
           showCreate ? (
             <Button onClick={() => { setCreating(true); setError(""); }}>
@@ -150,7 +193,7 @@ export function RequestsPage() {
           onChange={(e) => setStatus(e.target.value)}
         >
           <option value="">All statuses</option>
-          {["Pending", "Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delivered", "Cancelled"].map((s) => (
+          {REQUEST_STATUSES.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
@@ -176,6 +219,16 @@ export function RequestsPage() {
               { key: "truckType", label: "Type" },
               { key: "weight", label: "Weight" },
               {
+                key: "quote",
+                label: "Quote",
+                render: (row) => (row.quotedPrice != null ? money(row.quotedPrice) : "—")
+              },
+              {
+                key: "eta",
+                label: "ETA",
+                render: (row) => row.quotedEstimatedTime || "—"
+              },
+              {
                 key: "status",
                 label: "Status",
                 render: (row) => <StatusBadge status={row.status} />
@@ -193,9 +246,14 @@ export function RequestsPage() {
                         <Pencil size={16} />
                       </button>
                     )}
-                    {(row.status === "Pending" || row.status === "Assigned") && (
+                    {(row.status === "Pending" || row.status === "Quote Rejected") && (
+                      <Button className="px-2 py-1 text-xs" onClick={() => openQuote(row)}>
+                        {row.status === "Quote Rejected" ? "Revise quote" : "Send quote"}
+                      </Button>
+                    )}
+                    {(row.status === "Approved" || row.status === "Assigned") && (
                       <Button className="px-2 py-1 text-xs" onClick={() => openAssign(row)}>
-                        {row.status === "Pending" ? "Assign" : "Reassign"}
+                        {row.status === "Approved" ? "Assign driver" : "Reassign"}
                       </Button>
                     )}
                     {CANCELABLE_REQUEST_STATUSES.includes(row.status) && (
@@ -211,8 +269,53 @@ export function RequestsPage() {
         )}
       </section>
 
+      {quoting && (
+        <Modal
+          title={`${quoting.status === "Quote Rejected" ? "Revise quotation" : "Send quotation"} — ${quoting.id}`}
+          onClose={() => setQuoting(null)}
+        >
+          <form className="space-y-3" onSubmit={handleQuote(onQuote)}>
+            <p className="text-sm text-on-surface-variant">
+              {quoting.pickup} → {quoting.destination} · {quoting.weight}
+            </p>
+            <input
+              className="stitch-input w-full"
+              type="number"
+              step="0.01"
+              placeholder="Transportation price (USD)"
+              {...registerQuote("quotedPrice", { required: true })}
+            />
+            <input
+              className="stitch-input w-full"
+              placeholder="Estimated delivery time (e.g. 2 days, 48 hours)"
+              {...registerQuote("quotedEstimatedTime", { required: true })}
+            />
+            <textarea
+              className="stitch-input min-h-20 w-full"
+              placeholder="Quote notes (optional)"
+              {...registerQuote("quoteNotes")}
+            />
+            {quoting.customerDecisionNote ? (
+              <p className="text-sm text-amber-800 dark:text-amber-200">
+                Customer note: {quoting.customerDecisionNote}
+              </p>
+            ) : null}
+            {error && <p className="text-sm text-error">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setQuoting(null)}>Cancel</Button>
+              <Button disabled={quotingForm || quote.submit.isPending}>Send to customer</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {selected && (
-        <Modal title={`${selected.status === "Pending" ? "Assign" : "Reassign"} ${selected.id}`} onClose={() => setSelected(null)}>
+        <Modal title={`${selected.status === "Approved" ? "Assign driver" : "Reassign"} ${selected.id}`} onClose={() => setSelected(null)}>
+          {selected.quotedPrice != null ? (
+            <p className="mb-3 text-sm text-on-surface-variant">
+              Approved quote: {money(selected.quotedPrice)} · ETA {selected.quotedEstimatedTime}
+            </p>
+          ) : null}
           <select className="mb-4 w-full stitch-input" value={truckId} onChange={(e) => setTruckId(e.target.value)}>
             {fleet.map((truck) => (
               <option key={truck.id} value={truck.id}>
@@ -237,8 +340,18 @@ export function RequestsPage() {
             <Detail label="Status" value={<StatusBadge status={viewing.status} />} />
             <Detail label="Pickup" value={viewing.pickup} />
             <Detail label="Destination" value={viewing.destination} />
+            <Detail
+              label="Preferred pickup"
+              value={
+                viewing.preferredPickupDate
+                  ? new Date(viewing.preferredPickupDate).toLocaleDateString()
+                  : "—"
+              }
+            />
             <Detail label="Truck type" value={viewing.truckType} />
             <Detail label="Weight" value={viewing.weight} />
+            <Detail label="Quoted price" value={viewing.quotedPrice != null ? money(viewing.quotedPrice) : "—"} />
+            <Detail label="Quoted ETA" value={viewing.quotedEstimatedTime || "—"} />
             <Detail label="Driver" value={viewing.driver || "—"} />
             <Detail label="Truck" value={viewing.truck || "—"} />
             <Detail label="Description" value={viewing.description} className="sm:col-span-2" />

@@ -21,7 +21,8 @@ export function BookTruckPage() {
       destination: "New York",
       truckType: "Box Truck",
       weight: "2.0 tons",
-      description: "General cargo"
+      description: "General cargo",
+      preferredPickupDate: ""
     }
   });
 
@@ -62,6 +63,9 @@ export function BookTruckPage() {
           </Field>
           <Field label="Cargo weight">
             <input className="stitch-input" {...register("weight", { required: true })} />
+          </Field>
+          <Field label="Preferred pickup date">
+            <input className="stitch-input" type="date" {...register("preferredPickupDate")} />
           </Field>
           <Field label="Sender">
             <input className="stitch-input" {...register("sender")} />

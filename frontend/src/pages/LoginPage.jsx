@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
 import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { PublicSiteHeader } from "../components/PublicSiteHeader";
 import { roleHome, DEMO_ACCOUNTS, DEMO_PASSWORD } from "../utils/helpers";
 
 export function LoginPage() {
@@ -98,14 +98,12 @@ export function LoginPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div className="absolute right-4 top-4 z-20">
-        <ThemeToggle className="text-white hover:bg-white/10" />
-      </div>
+      <PublicSiteHeader variant="auth" className="border-transparent bg-transparent" />
       <div className="hero-gradient absolute inset-0" />
       <div className="absolute inset-0 opacity-20">
         <div className="absolute right-[-8%] top-10 h-[500px] w-[500px] rounded-full bg-secondary-container blur-[120px]" />
       </div>
-      <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-4 py-10 lg:grid-cols-2">
+      <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-4 pb-[env(safe-area-inset-bottom)] pt-[calc(5rem+env(safe-area-inset-top))] lg:grid-cols-2 lg:py-10">
         <div className="text-white">
           <Link to="/" className="mb-8 inline-flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary-container shadow-xl">

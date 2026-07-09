@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bell,
+  Download,
   FileText,
   HelpCircle,
   LayoutDashboard,
@@ -19,6 +20,8 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
+import { IosInstallGuide } from "../components/IosInstallGuide";
+import { usePwaInstall } from "../hooks/usePwaInstall";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import { useRealtimeInvalidation } from "../hooks/useApi";
@@ -52,7 +55,9 @@ export function DashboardLayout() {
   const { connected } = useSocket();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const { standalone, showIosGuide, showAndroidInstall, install } = usePwaInstall();
   useRealtimeInvalidation();
 
   const items = navForRole(user.role);
@@ -72,12 +77,21 @@ export function DashboardLayout() {
     else navigate(`${base}/users`);
   }
 
+  async function onInstallApp() {
+    if (showIosGuide) {
+      setInstallGuideOpen(true);
+      return;
+    }
+    if (showAndroidInstall) await install();
+  }
+
   return (
     <div className="min-h-screen bg-background text-on-surface">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-outline-variant/30 bg-primary-container p-5 text-white shadow-md transition lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(100%,280px)] flex-col border-r border-outline-variant/30 bg-primary-container p-5 text-white shadow-md transition lg:w-[260px] lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
+        style={{ paddingTop: "calc(1.25rem + env(safe-area-inset-top))" }}
       >
         <div className="mb-8 flex items-start justify-between">
           <button type="button" onClick={() => navigate(base)} className="text-left">
@@ -115,6 +129,16 @@ export function DashboardLayout() {
         </nav>
 
         <div className="mt-auto border-t border-white/10 pt-5">
+          {!standalone ? (
+            <button
+              type="button"
+              onClick={onInstallApp}
+              className="mb-3 flex w-full items-center gap-3 rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-on-primary-container hover:bg-white/5"
+            >
+              <Download size={18} />
+              {showIosGuide ? "Ku rakib App-ka" : "Install App"}
+            </button>
+          ) : null}
           <Button className="mb-4 w-full" onClick={primaryAction}>
             <Plus size={16} />
             {user.role === "dispatcher" ? "New Assignment" : user.role === "customer" ? "Book a Truck" : "New Dispatch"}
@@ -150,11 +174,17 @@ export function DashboardLayout() {
         <button type="button" className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />
       )}
 
-      <header className="fixed right-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-outline-variant bg-surface-container-lowest px-4 shadow-sm lg:left-[260px] lg:w-[calc(100%-260px)]">
-        <div className="flex min-w-0 items-center gap-3">
-          <button type="button" className="rounded-lg p-2 lg:hidden" onClick={() => setOpen(true)}>
+      <header className="fixed right-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-outline-variant bg-surface-container-lowest px-4 pt-[env(safe-area-inset-top)] shadow-sm lg:left-[260px] lg:w-[calc(100%-260px)]">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            className="rounded-lg p-2 lg:hidden"
+            onClick={() => setOpen(true)}
+            aria-label="Open navigation menu"
+          >
             <Menu size={20} />
           </button>
+          <span className="text-sm font-semibold text-on-surface-variant lg:hidden">Menu</span>
           <div className="relative hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline" size={18} />
             <input
@@ -166,6 +196,16 @@ export function DashboardLayout() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          {!standalone ? (
+            <button
+              type="button"
+              onClick={onInstallApp}
+              className="rounded-full p-2 text-on-surface-variant hover:bg-surface-container-low lg:hidden"
+              aria-label="Install app"
+            >
+              <Download size={18} />
+            </button>
+          ) : null}
           <ThemeToggle />
           <button
             type="button"
@@ -192,11 +232,13 @@ export function DashboardLayout() {
         </div>
       </header>
 
-      <main className="min-h-screen px-4 pb-10 pt-24 lg:ml-[260px] lg:px-6">
+      <main className="min-h-screen px-4 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[calc(6rem+env(safe-area-inset-top))] lg:ml-[260px] lg:px-6 lg:pt-24">
         <div className="mx-auto max-w-[1400px]">
           <Outlet context={{ search }} />
         </div>
       </main>
+
+      <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />
     </div>
   );
 }

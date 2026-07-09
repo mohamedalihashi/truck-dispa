@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/Button";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Modal } from "../../components/ui/Modal";
 import { useTripActions, useTrips } from "../../hooks/useApi";
-import { nextTripStatus, TRIP_STATUSES } from "../../utils/helpers";
+import { driverTripActionLabel, nextDriverTripStatus, TRIP_STATUSES } from "../../utils/helpers";
 import { randomSomaliaCoords } from "../../utils/geo";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -181,15 +181,19 @@ export function DriverJobsPage() {
                       </>
                     )}
 
-                    {ACTIVE_STATUSES.includes(row.status) && row.status !== "Assigned" && (
+                    {ACTIVE_STATUSES.includes(row.status) &&
+                      row.status !== "Assigned" &&
+                      driverTripActionLabel(row.status) && (
                       <>
                         <Button
                           variant="secondary"
                           className="px-2 py-1 text-xs"
                           disabled={actions.updateStatus.isPending}
-                          onClick={() => advanceStatus(row.id, nextTripStatus(row.status))}
+                          onClick={() =>
+                            advanceStatus(row.id, nextDriverTripStatus(row.status))
+                          }
                         >
-                          Next status
+                          {driverTripActionLabel(row.status)}
                         </Button>
                         {["In Transit", "Loaded"].includes(row.status) && (
                           <Button

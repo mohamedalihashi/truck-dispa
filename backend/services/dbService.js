@@ -1,6 +1,13 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
 import { ADMIN, DEMO_PASSWORD } from "../config/seed.js";
+import {
+  buildWaafiAttemptReference,
+  buildWaafiReferenceId,
+  formatWaafiError,
+  isWaafiSuccess,
+  waafiPurchase
+} from "./waafiPayService.js";
 
 // ─── Status mapping helpers ──────────────────────────────────────────
 // Prisma enum values use underscores; the API uses spaces.
@@ -64,6 +71,14 @@ function mapCargoRequest(row) {
     receiver: row.receiver,
     sender: row.sender,
     specialInstructions: row.specialInstructions,
+    preferredPickupDate: row.preferredPickupDate,
+    quotedPrice: row.quotedPrice != null ? Number(row.quotedPrice) : null,
+    quotedEstimatedTime: row.quotedEstimatedTime,
+    quoteNotes: row.quoteNotes,
+    quotedAt: row.quotedAt,
+    quoteVersion: row.quoteVersion ?? 0,
+    customerDecisionAt: row.customerDecisionAt,
+    customerDecisionNote: row.customerDecisionNote,
     status: reqStatusToApi(row.status),
     driverId: row.driverId,
     driver: row.driver?.name || null,
@@ -109,6 +124,37 @@ function mapTrip(row) {
         : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    feedback: row.feedback ? mapFeedback(row.feedback) : null,
+  };
+}
+
+function mapFeedback(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    tripId: row.tripId,
+    customerId: row.customerId,
+    driverId: row.driverId,
+    rating: row.rating,
+    productRating: row.productRating,
+    comment: row.comment,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapFeedbackListItem(row) {
+  if (!row) return null;
+  const trip = row.trip;
+  return {
+    ...mapFeedback(row),
+    customer: row.customer?.name || trip?.customer?.name || null,
+    driver: row.driver?.name || trip?.driver?.name || null,
+    dispatcher: trip?.dispatcher?.name || null,
+    route: trip ? `${trip.pickup} → ${trip.destination}` : null,
+    pickup: trip?.pickup || null,
+    destination: trip?.destination || null,
+    cargo: trip?.cargoRequest?.description || null,
+    tripStatus: trip ? tripStatusToApi(trip.status) : null,
   };
 }
 
@@ -141,6 +187,20 @@ const tripInclude = {
   dispatcher: true,
   truck: true,
   cargoRequest: true,
+  feedback: true,
+};
+
+const feedbackListInclude = {
+  customer: true,
+  driver: true,
+  trip: {
+    include: {
+      customer: true,
+      driver: true,
+      dispatcher: true,
+      cargoRequest: true,
+    },
+  },
 };
 
 // ─── DB Service ──────────────────────────────────────────────────────
@@ -422,6 +482,9 @@ export const db = {
           receiver: payload.receiver || null,
           sender: payload.sender || null,
           specialInstructions: payload.specialInstructions || null,
+          preferredPickupDate: payload.preferredPickupDate
+            ? new Date(payload.preferredPickupDate)
+            : null,
           status: "Pending",
         },
       });
@@ -475,6 +538,11 @@ export const db = {
     if (payload.receiver !== undefined) data.receiver = payload.receiver;
     if (payload.sender !== undefined) data.sender = payload.sender;
     if (payload.specialInstructions !== undefined) data.specialInstructions = payload.specialInstructions;
+    if (payload.preferredPickupDate !== undefined) {
+      data.preferredPickupDate = payload.preferredPickupDate
+        ? new Date(payload.preferredPickupDate)
+        : null;
+    }
 
     if (Object.keys(data).length > 0) {
       await prisma.cargoRequest.update({ where: { id }, data });
@@ -485,6 +553,159 @@ export const db = {
       include: cargoRequestInclude,
     });
     return mapCargoRequest(updated);
+  },
+
+  async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, dispatcherId }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.cargoRequest.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      const apiStatus = reqStatusToApi(existing.status);
+      if (!["Pending", "Quote Rejected"].includes(apiStatus)) {
+        const error = new Error("Only pending or quote-rejected requests can receive a quotation");
+        error.status = 400;
+        throw error;
+      }
+      if (quotedPrice == null || !quotedEstimatedTime?.trim()) {
+        const error = new Error("quotedPrice and quotedEstimatedTime are required");
+        error.status = 400;
+        throw error;
+      }
+
+      await tx.cargoRequest.update({
+        where: { id },
+        data: {
+          status: "Awaiting_Approval",
+          quotedPrice,
+          quotedEstimatedTime: quotedEstimatedTime.trim(),
+          quoteNotes: quoteNotes?.trim() || null,
+          quotedAt: new Date(),
+          quoteVersion: (existing.quoteVersion || 0) + 1,
+          dispatcherId: dispatcherId || existing.dispatcherId,
+          customerDecisionAt: null,
+          customerDecisionNote: null,
+        },
+      });
+
+      const notification = await tx.notification.create({
+        data: {
+          userId: existing.customerId,
+          type: "quote.sent",
+          message: `Quotation ready for ${id}: $${Number(quotedPrice).toFixed(2)} — ${quotedEstimatedTime.trim()}`,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: dispatcherId,
+          action: "cargo.quote.sent",
+          entity: "cargo_requests",
+          entityId: id,
+          meta: { quotedPrice: Number(quotedPrice), quotedEstimatedTime },
+        },
+      });
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+
+      return { request: mapCargoRequest(request), notification: mapNotification(notification) };
+    });
+  },
+
+  async acceptCargoQuote(id, { customerId }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.cargoRequest.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      if (existing.customerId !== customerId) {
+        const error = new Error("Not allowed to approve this quotation");
+        error.status = 403;
+        throw error;
+      }
+      if (reqStatusToApi(existing.status) !== "Awaiting Approval") {
+        const error = new Error("This request is not waiting for customer approval");
+        error.status = 400;
+        throw error;
+      }
+
+      await tx.cargoRequest.update({
+        where: { id },
+        data: {
+          status: "Approved",
+          customerDecisionAt: new Date(),
+          customerDecisionNote: null,
+        },
+      });
+
+      if (existing.dispatcherId) {
+        await tx.notification.create({
+          data: {
+            userId: existing.dispatcherId,
+            type: "quote.accepted",
+            message: `Customer approved quotation for ${id}`,
+          },
+        });
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: customerId,
+          type: "quote.accepted",
+          message: `You approved the quotation for ${id}. A driver will be assigned soon.`,
+        },
+      });
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+      return mapCargoRequest(request);
+    });
+  },
+
+  async rejectCargoQuote(id, { customerId, note }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.cargoRequest.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      if (existing.customerId !== customerId) {
+        const error = new Error("Not allowed to reject this quotation");
+        error.status = 403;
+        throw error;
+      }
+      if (reqStatusToApi(existing.status) !== "Awaiting Approval") {
+        const error = new Error("This request is not waiting for customer approval");
+        error.status = 400;
+        throw error;
+      }
+
+      await tx.cargoRequest.update({
+        where: { id },
+        data: {
+          status: "Quote_Rejected",
+          customerDecisionAt: new Date(),
+          customerDecisionNote: note?.trim() || null,
+        },
+      });
+
+      if (existing.dispatcherId) {
+        await tx.notification.create({
+          data: {
+            userId: existing.dispatcherId,
+            type: "quote.rejected",
+            message: `Customer rejected quotation for ${id}${note ? `: ${note.trim()}` : ""}`,
+          },
+        });
+      }
+
+      const request = await tx.cargoRequest.findUnique({
+        where: { id },
+        include: cargoRequestInclude,
+      });
+      return mapCargoRequest(request);
+    });
   },
 
   async assignCargoRequest(id, { driverId, truckId, dispatcherId }) {
@@ -500,6 +721,25 @@ export const db = {
 
       const current = await tx.cargoRequest.findUnique({ where: { id } });
       if (!current) return null;
+
+      const currentStatus = reqStatusToApi(current.status);
+      if (currentStatus !== "Approved" && currentStatus !== "Assigned") {
+        const error = new Error(
+          "Customer must approve the quotation before assigning a driver"
+        );
+        error.status = 400;
+        throw error;
+      }
+      if (currentStatus === "Approved" && (!current.quotedPrice || !current.quotedEstimatedTime)) {
+        const error = new Error("Approved request is missing quotation details");
+        error.status = 400;
+        throw error;
+      }
+
+      const tripFare = current.quotedPrice != null
+        ? current.quotedPrice
+        : estimateFare(current.weight);
+      const tripEta = current.quotedEstimatedTime || "8h 00m";
 
       // Release previous truck if reassigning
       if (current.truckId && current.truckId !== truckId) {
@@ -533,7 +773,14 @@ export const db = {
         tripId = existingTrip.id;
         await tx.trip.update({
           where: { id: tripId },
-          data: { driverId, truckId, dispatcherId, status: "Assigned" },
+          data: {
+            driverId,
+            truckId,
+            dispatcherId,
+            status: "Assigned",
+            fare: tripFare,
+            estimatedTime: tripEta,
+          },
         });
       } else {
         tripId = `SHP-${Math.floor(10000 + Math.random() * 9000)}`;
@@ -548,9 +795,9 @@ export const db = {
             pickup: updated.pickup,
             destination: updated.destination,
             distance: payloadDistance(updated.pickup, updated.destination),
-            estimatedTime: "8h 00m",
+            estimatedTime: tripEta,
             status: "Assigned",
-            fare: estimateFare(updated.weight),
+            fare: tripFare,
           },
         });
       }
@@ -597,7 +844,8 @@ export const db = {
       }
 
       const apiStatus = reqStatusToApi(existing.status);
-      if (["Loaded", "In Transit", "Delivered", "Cancelled"].includes(apiStatus)) {
+      const nonCancelable = ["Loaded", "In Transit", "Delivered", "Cancelled"];
+      if (nonCancelable.includes(apiStatus)) {
         const error = new Error("Cannot cancel a request in this status");
         error.status = 400;
         throw error;
@@ -721,11 +969,16 @@ export const db = {
           if (!existingPayment) {
             await tx.payment.create({
               data: {
-                tripId: trip.id,
-                customerId: trip.customerId,
+                trip: { connect: { id: trip.id } },
+                customer: { connect: { id: trip.customerId } },
                 amount: trip.fare,
-                status: "Paid",
-                method: "card",
+                amountPaid: 0,
+                status: "Pending",
+                method: "waafipay",
+                provider: "waafipay",
+                currency: process.env.WAAFI_CURRENCY || "SLSH",
+                referenceId: buildWaafiReferenceId(trip.id),
+                description: `Shipment ${trip.id} — ${trip.pickup} to ${trip.destination}`,
               },
             });
           }
@@ -810,6 +1063,104 @@ export const db = {
 
     if (!trip) return null;
     return { id, deliveryProofUrl: trip.deliveryProofUrl, signatureUrl: trip.signatureUrl };
+  },
+
+  async submitTripFeedback(tripId, customerId, { rating, productRating, comment }) {
+    const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) return null;
+    if (trip.customerId !== customerId) {
+      const error = new Error("Not allowed to rate this trip");
+      error.status = 403;
+      throw error;
+    }
+    if (tripStatusToApi(trip.status) !== "Delivered") {
+      const error = new Error("Feedback is only allowed after delivery");
+      error.status = 400;
+      throw error;
+    }
+
+    const existing = await prisma.tripFeedback.findUnique({ where: { tripId } });
+    if (existing) {
+      const error = new Error("Feedback already submitted for this trip");
+      error.status = 409;
+      throw error;
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const feedback = await tx.tripFeedback.create({
+        data: {
+          tripId,
+          customerId,
+          driverId: trip.driverId,
+          rating,
+          productRating: productRating ?? null,
+          comment: comment?.trim() || null,
+        },
+      });
+
+      if (trip.driverId) {
+        await tx.notification.create({
+          data: {
+            userId: trip.driverId,
+            type: "trip.feedback.received",
+            message: `Customer rated trip ${tripId}: ${rating}/5 stars`,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: customerId,
+          action: "trip.feedback.submitted",
+          entity: "trips",
+          entityId: tripId,
+          meta: { rating, productRating },
+        },
+      });
+
+      const joined = await tx.trip.findUnique({
+        where: { id: tripId },
+        include: tripInclude,
+      });
+      return mapTrip(joined);
+    });
+  },
+
+  async listTripFeedback({ driverId, dispatcherId, customerId, page = 1, limit = 20 } = {}) {
+    const where = {};
+    if (driverId) where.driverId = driverId;
+    if (customerId) where.customerId = customerId;
+    if (dispatcherId) where.trip = { dispatcherId };
+
+    const offset = (Number(page) - 1) * Number(limit);
+    const [data, total, aggregates] = await Promise.all([
+      prisma.tripFeedback.findMany({
+        where,
+        include: feedbackListInclude,
+        orderBy: { createdAt: "desc" },
+        take: Number(limit),
+        skip: offset,
+      }),
+      prisma.tripFeedback.count({ where }),
+      prisma.tripFeedback.aggregate({
+        where,
+        _avg: { rating: true, productRating: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      data: data.map(mapFeedbackListItem),
+      total,
+      page: Number(page),
+      summary: {
+        count: aggregates._count._all,
+        avgRating: aggregates._avg.rating ? Number(aggregates._avg.rating.toFixed(1)) : null,
+        avgProductRating: aggregates._avg.productRating
+          ? Number(aggregates._avg.productRating.toFixed(1))
+          : null,
+      },
+    };
   },
 
   async rejectTrip(id, driverId) {
@@ -904,8 +1255,8 @@ export const db = {
       prisma.cargoRequest.count({ where: { createdAt: { gte: startOfDay } } }),
       prisma.truck.count({ where: { status: "Available" } }),
       prisma.payment.aggregate({
-        where: { status: "Paid" },
-        _sum: { amount: true },
+        where: { status: { in: ["Paid", "Partial"] } },
+        _sum: { amountPaid: true },
       }),
     ]);
 
@@ -919,7 +1270,7 @@ export const db = {
       completedOrders,
       liveTrips,
       inTransit,
-      revenue: Number(revenueResult._sum.amount || 0),
+      revenue: Number(revenueResult._sum.amountPaid || 0),
       todaysOrders,
       availableTrucks,
     };
@@ -937,9 +1288,9 @@ export const db = {
             : `TO_CHAR(created_at, '"Week" WW')`;
 
     const result = await prisma.$queryRawUnsafe(
-      `SELECT ${buckets} AS label, COALESCE(SUM(amount), 0)::float AS revenue
+      `SELECT ${buckets} AS label, COALESCE(SUM(amount_paid), 0)::float AS revenue
        FROM payments
-       WHERE status = 'Paid'
+       WHERE status IN ('Paid', 'Partial')
        GROUP BY 1
        ORDER BY 1`
     );
@@ -963,9 +1314,10 @@ export const db = {
       SELECT u.name,
              COUNT(t.id)::int AS completed_trips,
              COALESCE(SUM(t.fare), 0)::float AS earnings,
-             4.8 AS rating
+             COALESCE(ROUND(AVG(f.rating)::numeric, 1), 0)::float AS rating
       FROM users u
       LEFT JOIN trips t ON t.driver_id = u.id AND t.status = 'Delivered'
+      LEFT JOIN trip_feedback f ON f.driver_id = u.id
       WHERE u.role = 'driver'
       GROUP BY u.id
       ORDER BY completed_trips DESC
@@ -1031,27 +1383,201 @@ export const db = {
 
   // ── Payments ─────────────────────────────────────────────────────
 
-  async createPayment({ tripId, customerId, amount, status = "Pending", method = "card" }) {
-    const payment = await prisma.payment.create({
+  mapPayment(row, customerName) {
+    if (!row) return null;
+    const amount = Number(row.amount);
+    const amountPaid = Number(row.amountPaid || 0);
+    return {
+      id: row.id,
+      tripId: row.tripId,
+      customerId: row.customerId,
+      customer: customerName ?? row.customer?.name,
+      amount,
+      amountPaid,
+      balanceDue: Math.max(0, amount - amountPaid),
+      status: row.status,
+      method: row.method,
+      currency: row.currency,
+      referenceId: row.referenceId,
+      description: row.description,
+      provider: row.provider,
+      providerTransactionId: row.providerTransactionId,
+      createdAt: row.createdAt,
+    };
+  },
+
+  async getPaymentById(id) {
+    const payment = await prisma.payment.findUnique({
+      where: { id },
+      include: { customer: true, trip: true },
+    });
+    return payment ? this.mapPayment(payment) : null;
+  },
+
+  async processWaafiPayment({ paymentId, accountNo, customerId, actorId, payAmount }) {
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { trip: true, customer: true },
+    });
+
+    if (!payment) {
+      const error = new Error("Payment not found");
+      error.status = 404;
+      throw error;
+    }
+    if (payment.customerId !== customerId) {
+      const error = new Error("Not authorized to pay this invoice");
+      error.status = 403;
+      throw error;
+    }
+
+    const totalDue = Number(payment.amount);
+    const alreadyPaid = Number(payment.amountPaid || 0);
+    const balanceDue = Math.max(0, totalDue - alreadyPaid);
+
+    if (payment.status === "Paid" || balanceDue <= 0) {
+      const error = new Error("This payment is already completed");
+      error.status = 409;
+      throw error;
+    }
+
+    const chargeAmount =
+      payAmount != null && payAmount !== "" ? Number(payAmount) : balanceDue;
+    if (!Number.isFinite(chargeAmount) || chargeAmount <= 0) {
+      const error = new Error("Enter a valid payment amount greater than zero");
+      error.status = 400;
+      throw error;
+    }
+    if (chargeAmount > balanceDue + 0.01) {
+      const error = new Error(`You can pay at most ${balanceDue.toFixed(2)} (remaining balance)`);
+      error.status = 400;
+      throw error;
+    }
+
+    const referenceId = buildWaafiAttemptReference(paymentId);
+    const invoiceId = buildWaafiReferenceId(payment.tripId || payment.id);
+    const description =
+      payment.description ||
+      (payment.trip
+        ? `Trip ${payment.tripId} — ${payment.trip.pickup} to ${payment.trip.destination}`
+        : "TruckDispatch shipment payment");
+
+    const { response, currency } = await waafiPurchase({
+      accountNo,
+      referenceId,
+      invoiceId,
+      amount: chargeAmount,
+      description,
+    });
+
+    if (isWaafiSuccess(response)) {
+      const newAmountPaid = alreadyPaid + chargeAmount;
+      const newStatus = newAmountPaid >= totalDue - 0.01 ? "Paid" : "Partial";
+
+      const updated = await prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          status: newStatus,
+          amountPaid: newAmountPaid,
+          method: "waafipay",
+          provider: "waafipay",
+          currency,
+          referenceId,
+          description,
+          providerTransactionId: response.params?.transactionId
+            ? String(response.params.transactionId)
+            : null,
+          providerResponse: response,
+        },
+        include: { customer: true },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          actorId,
+          action: "payment.waafipay.completed",
+          entity: "payment",
+          entityId: paymentId,
+          meta: {
+            transactionId: response.params?.transactionId,
+            referenceId,
+            chargeAmount,
+            amountPaid: newAmountPaid,
+            totalDue,
+          },
+        },
+      });
+
+      const customerNotification = await prisma.notification.create({
+        data: {
+          userId: customerId,
+          type: "payment.completed",
+          message: `Payment of ${chargeAmount.toFixed(2)} ${currency} received for ${payment.tripId || "shipment"}.`,
+        },
+      });
+
+      const admins = await prisma.user.findMany({
+        where: { role: "admin" },
+        select: { id: true },
+      });
+      const customerName = payment.customer?.name || "Customer";
+      const adminNotifications = await Promise.all(
+        admins.map((admin) =>
+          prisma.notification.create({
+            data: {
+              userId: admin.id,
+              type: "payment.received",
+              message: `${customerName} paid ${chargeAmount.toFixed(2)} ${currency} via Waafi (${newStatus}).`,
+            },
+          })
+        )
+      );
+
+      return {
+        payment: this.mapPayment(updated),
+        notification: customerNotification,
+        adminNotifications,
+      };
+    }
+
+    console.error("WaafiPay declined:", JSON.stringify(response));
+
+    await prisma.payment.update({
+      where: { id: paymentId },
       data: {
-        tripId: tripId || null,
-        customerId,
-        amount,
-        status,
-        method,
+        method: "waafipay",
+        provider: "waafipay",
+        currency,
+        referenceId,
+        description,
+        providerResponse: response,
       },
     });
-    const customer = await prisma.user.findUnique({ where: { id: payment.customerId } });
-    return {
-      id: payment.id,
-      tripId: payment.tripId,
-      customerId: payment.customerId,
-      customer: customer?.name,
-      amount: Number(payment.amount),
-      status: payment.status,
-      method: payment.method,
-      createdAt: payment.createdAt,
+
+    const error = new Error(formatWaafiError(response));
+    error.status = 402;
+    error.details = response;
+    throw error;
+  },
+
+  async createPayment({ tripId, customerId, amount, status = "Pending", method = "waafipay", description }) {
+    const data = {
+      customer: { connect: { id: customerId } },
+      amount,
+      amountPaid: status === "Paid" ? amount : 0,
+      status,
+      method,
+      provider: method === "waafipay" ? "waafipay" : null,
+      currency: process.env.WAAFI_CURRENCY || "SLSH",
     };
+    if (description) data.description = description;
+    if (tripId) {
+      data.trip = { connect: { id: tripId } };
+    }
+
+    const payment = await prisma.payment.create({ data });
+    const customer = await prisma.user.findUnique({ where: { id: payment.customerId } });
+    return this.mapPayment(payment, customer?.name);
   },
 
   async deletePayment(id) {
@@ -1059,48 +1585,93 @@ export const db = {
     return result.count > 0;
   },
 
-  async updatePayment(id, { status }) {
+  async updatePayment(id, { status, amount, description, amountPaid, method }) {
+    const existing = await prisma.payment.findUnique({ where: { id } });
+    if (!existing) return null;
+
+    const data = {};
+    if (status != null) data.status = status;
+    if (amount != null) data.amount = amount;
+    if (description != null) data.description = description;
+    if (method != null) data.method = method;
+    if (amountPaid != null) {
+      data.amountPaid = amountPaid;
+    } else if (status === "Paid") {
+      data.amountPaid = amount != null ? amount : existing.amount;
+    } else if (status === "Pending") {
+      data.amountPaid = 0;
+    }
+
+    if (status === "Paid" && data.amountPaid == null) {
+      data.amountPaid = amount != null ? amount : existing.amount;
+    }
+
     const payment = await prisma.payment.update({
       where: { id },
-      data: { status },
+      data,
+      include: { customer: true },
     }).catch(() => null);
 
     if (!payment) return null;
-    const customer = payment.customerId
-      ? await prisma.user.findUnique({ where: { id: payment.customerId } })
-      : null;
-
-    return {
-      id: payment.id,
-      tripId: payment.tripId,
-      customerId: payment.customerId,
-      customer: customer?.name,
-      amount: Number(payment.amount),
-      status: payment.status,
-      method: payment.method,
-      createdAt: payment.createdAt,
-    };
+    return this.mapPayment(payment);
   },
 
-  async listPayments({ page = 1, limit = 50 } = {}) {
+  async updateCustomerPayment(id, { amount, description, customerId }) {
+    const payment = await prisma.payment.findUnique({ where: { id } });
+    if (!payment) {
+      const error = new Error("Payment not found");
+      error.status = 404;
+      throw error;
+    }
+    if (payment.customerId !== customerId) {
+      const error = new Error("Not authorized to edit this payment");
+      error.status = 403;
+      throw error;
+    }
+    if (payment.status === "Paid") {
+      const error = new Error("Completed payments cannot be edited");
+      error.status = 409;
+      throw error;
+    }
+    if (Number(payment.amountPaid || 0) > 0) {
+      const error = new Error("Cannot change invoice after a partial payment was made");
+      error.status = 409;
+      throw error;
+    }
+
+    const data = {};
+    if (amount != null) {
+      const numericAmount = Number(amount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        const error = new Error("Amount must be greater than zero");
+        error.status = 400;
+        throw error;
+      }
+      data.amount = numericAmount;
+    }
+    if (description != null) data.description = description;
+
+    const updated = await prisma.payment.update({
+      where: { id },
+      data,
+      include: { customer: true },
+    });
+
+    return this.mapPayment(updated);
+  },
+
+  async listPayments({ page = 1, limit = 50, customerId } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
+    const where = customerId ? { customerId } : {};
     const data = await prisma.payment.findMany({
+      where,
       include: { customer: true },
       orderBy: { createdAt: "desc" },
       take: Number(limit),
       skip: offset,
     });
     return {
-      data: data.map((row) => ({
-        id: row.id,
-        tripId: row.tripId,
-        customerId: row.customerId,
-        customer: row.customer?.name,
-        amount: Number(row.amount),
-        status: row.status,
-        method: row.method,
-        createdAt: row.createdAt,
-      })),
+      data: data.map((row) => this.mapPayment(row)),
       total: data.length,
     };
   },

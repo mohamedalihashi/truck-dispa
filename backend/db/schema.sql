@@ -27,7 +27,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE payment_status AS ENUM ('Pending', 'Paid', 'Failed', 'Refunded');
+  CREATE TYPE payment_status AS ENUM ('Pending', 'Partial', 'Paid', 'Failed', 'Refunded');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -118,7 +118,13 @@ CREATE TABLE IF NOT EXISTS payments (
   customer_id UUID REFERENCES users(id),
   amount NUMERIC(12, 2) NOT NULL,
   status payment_status NOT NULL DEFAULT 'Pending',
-  method TEXT DEFAULT 'card',
+  method TEXT DEFAULT 'waafipay',
+  currency TEXT DEFAULT 'USD',
+  reference_id TEXT UNIQUE,
+  description TEXT,
+  provider TEXT DEFAULT 'waafipay',
+  provider_transaction_id TEXT,
+  provider_response JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

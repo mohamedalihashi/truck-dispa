@@ -1,6 +1,7 @@
 import axios from "axios";
+import { getApiBaseUrl } from "../config/api.js";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:4000/api";
+const API_BASE_URL = getApiBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -16,8 +17,11 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const message = error.response?.data?.message || error.message || "Request failed";
-    return Promise.reject(new Error(message));
+    const data = error.response?.data;
+    const message = data?.message || error.message || "Request failed";
+    const err = new Error(message);
+    if (data?.details) err.details = data.details;
+    return Promise.reject(err);
   }
 );
 
@@ -41,8 +45,12 @@ export const api = {
   updateCargoRequest: (id, payload) => apiClient.patch(`/cargo-requests/${id}`, payload),
   listCargoRequests: (params = {}) => apiClient.get("/cargo-requests", { params }),
   assignCargoRequest: (id, payload) => apiClient.patch(`/cargo-requests/${id}/assign`, payload),
+  submitCargoQuote: (id, payload) => apiClient.patch(`/cargo-requests/${id}/quote`, payload),
+  acceptCargoQuote: (id) => apiClient.post(`/cargo-requests/${id}/quote/accept`),
+  rejectCargoQuote: (id, payload) => apiClient.post(`/cargo-requests/${id}/quote/reject`, payload),
   cancelCargoRequest: (id) => apiClient.delete(`/cargo-requests/${id}`),
   listTrips: (params = {}) => apiClient.get("/trips", { params }),
+  listTripFeedback: (params = {}) => apiClient.get("/trips/feedback", { params }),
   updateTripStatus: (id, status) => apiClient.patch(`/trips/${id}/status`, { status }),
   acceptTrip: (id) => apiClient.post(`/trips/${id}/accept`),
   rejectTrip: (id) => apiClient.post(`/trips/${id}/reject`),
@@ -51,6 +59,7 @@ export const api = {
     apiClient.post(`/trips/${id}/proof`, formData, {
       headers: { "Content-Type": "multipart/form-data" }
     }),
+  submitTripFeedback: (id, payload) => apiClient.post(`/trips/${id}/feedback`, payload),
   listTrucks: (params = {}) => apiClient.get("/trucks", { params }),
   createTruck: (payload) => apiClient.post("/trucks", payload),
   listTruckTypes: () => apiClient.get("/trucks/types"),
@@ -64,8 +73,11 @@ export const api = {
   shipmentsReport: () => apiClient.get("/reports/shipments"),
   listPayments: () => apiClient.get("/admin/payments"),
   createPayment: (payload) => apiClient.post("/admin/payments", payload),
-  updatePayment: (id, status) => apiClient.patch(`/admin/payments/${id}`, { status }),
+  updatePayment: (id, payload) => apiClient.patch(`/admin/payments/${id}`, payload),
+  updateCustomerPayment: (id, payload) => apiClient.patch(`/payments/${id}`, payload),
   deletePayment: (id) => apiClient.delete(`/admin/payments/${id}`),
+  getWaafiConfig: () => apiClient.get("/payments/waafi/config"),
+  payWithWaafi: (payload) => apiClient.post("/payments/waafi/purchase", payload),
   getSettings: () => apiClient.get("/admin/settings"),
   updateSettings: (key, value) => apiClient.put(`/admin/settings/${key}`, value),
   listAuditLogs: () => apiClient.get("/admin/audit-logs")

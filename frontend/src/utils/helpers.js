@@ -2,17 +2,52 @@ export function money(value) {
   return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+export function paymentBalance(row) {
+  const amount = Number(row?.amount || 0);
+  const paid = Number(row?.amountPaid || 0);
+  return Math.max(0, amount - paid);
+}
+
+export function isPayablePayment(row) {
+  return row && ["Pending", "Partial", "Failed"].includes(row.status) && paymentBalance(row) > 0;
+}
+
 export function titleCase(value = "") {
   return String(value).replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
 export function statusTone(status = "") {
   const key = status.toLowerCase();
-  if (["delivered", "available", "paid", "accepted"].some((s) => key.includes(s))) return "success";
-  if (["pending", "assigned", "delayed", "maintenance"].some((s) => key.includes(s))) return "warn";
-  if (["cancelled", "failed", "rejected"].some((s) => key.includes(s))) return "danger";
+  if (["delivered", "available", "paid", "accepted", "approved"].some((s) => key.includes(s))) return "success";
+  if (["partial"].some((s) => key.includes(s))) return "info";
+  if (["pending", "assigned", "delayed", "maintenance", "awaiting approval"].some((s) => key.includes(s))) return "warn";
+  if (["cancelled", "failed", "rejected", "quote rejected"].some((s) => key.includes(s))) return "danger";
   return "info";
 }
+
+export const REQUEST_STATUSES = [
+  "Pending",
+  "Awaiting Approval",
+  "Quote Rejected",
+  "Approved",
+  "Assigned",
+  "Accepted",
+  "Arrived Pickup",
+  "Loaded",
+  "In Transit",
+  "Delivered",
+  "Cancelled"
+];
+
+export const CANCELABLE_REQUEST_STATUSES = [
+  "Pending",
+  "Awaiting Approval",
+  "Quote Rejected",
+  "Approved",
+  "Assigned",
+  "Accepted",
+  "Arrived Pickup"
+];
 
 export const TRIP_FLOW = [
   "Pending",
@@ -26,7 +61,31 @@ export const TRIP_FLOW = [
 
 export const TRIP_STATUSES = [...TRIP_FLOW, "Delayed", "Cancelled"];
 
-export const CANCELABLE_REQUEST_STATUSES = ["Pending", "Assigned", "Accepted", "Arrived Pickup"];
+export const DRIVER_TRIP_FLOW = ["Accepted", "Arrived Pickup", "In Transit", "Delivered"];
+
+export function driverTripActionLabel(status) {
+  switch (status) {
+    case "Assigned":
+      return "Accept job";
+    case "Accepted":
+      return "Mark Picked Up";
+    case "Arrived Pickup":
+    case "Loaded":
+      return "Mark In Transit";
+    case "In Transit":
+      return "Mark Delivered";
+    default:
+      return null;
+  }
+}
+
+export function nextDriverTripStatus(current) {
+  if (current === "Assigned") return "Accepted";
+  if (current === "Accepted") return "Arrived Pickup";
+  if (current === "Arrived Pickup" || current === "Loaded") return "In Transit";
+  if (current === "In Transit") return "Delivered";
+  return current;
+}
 
 export function nextTripStatus(current) {
   const idx = TRIP_FLOW.indexOf(current);

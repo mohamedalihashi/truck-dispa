@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TruckDispatch">
+  <rect width="64" height="64" rx="14" fill="#0d1c32"/>
+  <path fill="#f97316" d="M10 38h28v-2.5c0-1.1.9-2 2-2h5.2l5.8 6.5V38h2.5c1.1 0 2 .9 2 2v4H10v-6zm4-10h20c1.1 0 2 .9 2 2v6H14v-6c0-1.1.9-2 2-2z"/>
+  <circle cx="20" cy="44" r="4" fill="#fff"/>
+  <circle cx="44" cy="44" r="4" fill="#fff"/>
+</svg>

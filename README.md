@@ -66,7 +66,7 @@ Web-based logistics platform that connects **Fleet Managers** (customers), **dis
 ### Infrastructure
 
 - **PostgreSQL 16** via Docker Compose (recommended for local dev)
-- Optional Netlify deploy target for the frontend
+- Vercel deploy for frontend + API (see [Deployment notes](#deployment-notes))
 
 ---
 
@@ -421,13 +421,34 @@ npm run prisma:generate
 
 ## Deployment notes
 
-### Frontend (Netlify / static host)
+### Full stack (Vercel — frontend + API)
 
-1. Build: `npm run build` (outputs to `frontend/dist`)
-2. Set environment variables:
-   - `VITE_API_URL` → your production API URL
-   - `VITE_SOCKET_URL` → your production socket URL
-3. Configure redirects for SPA routing (all paths → `index.html`)
+One Vercel project serves the React app and the Express API (`api/index.js` serverless function).
+
+1. Import repo at [vercel.com/new](https://vercel.com/new) (root directory = repo root, not `frontend/`)
+2. Add **Environment Variables** (from `backend/.env.example`):
+
+| Variable | Example |
+|----------|---------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Strong random secret |
+| `CLIENT_ORIGIN` | `https://your-app.vercel.app` |
+| `SMTP_*` | Gmail SMTP for OTP emails |
+| `VITE_API_URL` | `/api` |
+| `VITE_SOCKET_URL` | leave empty (same origin; live GPS uses polling on Vercel) |
+
+3. Deploy — `vercel.json` runs install, Prisma generate, and Vite build automatically.
+
+**CLI:**
+
+```bash
+npx vercel
+npx vercel --prod
+```
+
+**Local dev** still uses `npm run dev` (Express on port 4000 + Vite proxy).
+
+> **Note:** Socket.io realtime is limited on Vercel serverless. REST API, auth, trips, and feedback work fully; the UI refreshes via React Query.
 
 ### Backend
 

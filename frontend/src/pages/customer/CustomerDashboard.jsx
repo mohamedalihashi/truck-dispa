@@ -9,6 +9,7 @@ import {
   Package,
   Phone,
   Plus,
+  Star,
   Truck,
   Wallet
 } from "lucide-react";
@@ -26,6 +27,7 @@ export function CustomerDashboard() {
   const shipments = trips?.data || [];
   const active = shipments.filter((t) => !["Delivered", "Cancelled"].includes(t.status));
   const live = active[0];
+  const needsFeedback = shipments.find((t) => t.status === "Delivered" && !t.feedback);
 
   return (
     <div className="space-y-8">
@@ -47,6 +49,19 @@ export function CustomerDashboard() {
           </>
         }
       />
+
+      {needsFeedback && (
+        <Link
+          to="/customer/shipments"
+          className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <Star size={18} className="shrink-0 fill-amber-400 text-amber-500" />
+          <span>
+            <strong>Trip {needsFeedback.id}</strong> was delivered — rate the goods and delivery service.
+          </span>
+          <ChevronRight className="ml-auto shrink-0" size={18} />
+        </Link>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Metric
