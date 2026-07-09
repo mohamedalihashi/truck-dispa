@@ -15,6 +15,7 @@ export function UsersPage() {
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [createInfo, setCreateInfo] = useState("");
   const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
   const mutations = useUserMutations();
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm({
@@ -25,6 +26,7 @@ export function UsersPage() {
   function openCreate() {
     setEditing(null);
     setError("");
+    setCreateInfo("");
     reset({ role: "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" });
     setOpen(true);
   }
@@ -59,7 +61,6 @@ export function UsersPage() {
         const payload = {
           name: values.name,
           email: values.email,
-          password: values.password,
           role: values.role,
           phone: values.phone || undefined
         };
@@ -71,7 +72,11 @@ export function UsersPage() {
             truckType: values.truckType
           };
         }
-        await mutations.create.mutateAsync(payload);
+        const result = await mutations.create.mutateAsync(payload);
+        const parts = [result.message || "User created. Credentials sent by email."];
+        if (result.devPassword) parts.push(`Temp password: ${result.devPassword}`);
+        if (result.devCode) parts.push(`Login OTP: ${result.devCode}`);
+        setCreateInfo(parts.join(" "));
       }
       setOpen(false);
       setEditing(null);
@@ -101,6 +106,12 @@ export function UsersPage() {
           </Button>
         }
       />
+
+      {createInfo && (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          {createInfo}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <input
@@ -198,12 +209,18 @@ export function UsersPage() {
             <input className="stitch-input" placeholder="Name" {...register("name", { required: true })} />
             <input className="stitch-input" placeholder="Phone" {...register("phone")} />
             <input className="stitch-input sm:col-span-2" type="email" placeholder="Email" {...register("email", { required: true })} />
-            <input
-              className="stitch-input"
-              type="password"
-              placeholder={editing ? "New password (optional)" : "Password"}
-              {...register("password", { required: !editing })}
-            />
+            {editing ? (
+              <input
+                className="stitch-input"
+                type="password"
+                placeholder="New password (optional)"
+                {...register("password")}
+              />
+            ) : (
+              <p className="sm:col-span-2 rounded-lg bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+                A temporary password and login OTP will be emailed automatically. The user must set a new password on first sign-in.
+              </p>
+            )}
             <select className="stitch-input" {...register("role")}>
               <option value="customer">Customer</option>
               <option value="dispatcher">Dispatcher</option>

@@ -321,7 +321,7 @@ export function LandingPage() {
                 [User, "Customer", "Ship your goods anywhere with ease.", "customer@truckdispatch.local", "Register Now →"],
                 [Truck, "Driver", "Find jobs and manage trips.", "driver@truckdispatch.local", "Apply Today →"],
                 [UserCog, "Dispatcher", "Oversee and optimize logistics.", "dispatcher@truckdispatch.local", "Login →"],
-                [Shield, "Admin", "Manage users, trucks, and reports.", "admin@truckdispatch.local", "Login →"]
+                [Shield, "Admin", "Manage users, trucks, and reports.", "wllhero145@gmail.com", "Login →"]
               ].map(([Icon, title, text, email, cta]) => (
                 <button
                   key={title}

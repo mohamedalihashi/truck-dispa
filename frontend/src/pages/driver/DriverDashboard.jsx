@@ -23,9 +23,8 @@ import { money, nextTripStatus } from "../../utils/helpers";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
-
-const MAP_IMG =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuAvgSFM7C9zxGI0dbL4BsG6SiX3I_nnO2z7wJ5f8A-e88-SUzPW9d2924TpCNo0r3lwpK23jWfi7AK_fCUpE9RtLQO8AV_btGaPvIELjHgW0bsRyT7VDvavzWBFUgXJTVyxhL14simHhF44emgfmJecOnJpoxrwc6VF3N0xvPNsNpdqyszT6RjVT1wnQLSw4yBRHYeNaaBwwkL74h3xPY5mVcg1sd4K0S2jNAcSea7CEpXe7IZ6y5S_gBeEklkvRoJBnOMcoKi1kfE";
+import { FleetMap } from "../../components/map/FleetMap";
+import { randomSomaliaCoords } from "../../utils/geo";
 
 export function DriverDashboard() {
   const { user } = useAuth();
@@ -173,13 +172,10 @@ export function DriverDashboard() {
                           <button
                             type="button"
                             className="flex w-12 items-center justify-center rounded-lg border border-secondary-container text-secondary-container transition hover:bg-secondary-fixed"
-                            onClick={() =>
-                              actions.shareLocation.mutate({
-                                id: trip.id,
-                                lat: 41.2 + Math.random(),
-                                lng: -87.6 + Math.random()
-                              })
-                            }
+                            onClick={() => {
+                              const { lat, lng } = randomSomaliaCoords();
+                              actions.shareLocation.mutate({ id: trip.id, lat, lng });
+                            }}
                           >
                             <MapPin size={18} />
                           </button>
@@ -218,7 +214,7 @@ export function DriverDashboard() {
             </div>
           </div>
           <div className="relative min-h-[400px] flex-1 overflow-hidden">
-            <img src={MAP_IMG} alt="Route navigation map" className="h-full w-full object-cover" />
+            <FleetMap trips={live ? [live] : []} selectedId={live?.id} className="absolute inset-0 h-full w-full" />
             <div className="absolute bottom-6 right-6 flex flex-col gap-2">
               <button type="button" className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container-lowest text-on-surface shadow-lg hover:bg-surface-container-high">
                 <Plus size={20} />

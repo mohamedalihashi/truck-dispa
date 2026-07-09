@@ -7,6 +7,7 @@ import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Modal } from "../../components/ui/Modal";
 import { useTripActions, useTrips } from "../../hooks/useApi";
 import { nextTripStatus, TRIP_STATUSES } from "../../utils/helpers";
+import { randomSomaliaCoords } from "../../utils/geo";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -64,16 +65,18 @@ export function DriverJobsPage() {
             }
           },
           async () => {
-            await send(41.2 + Math.random() * 0.1, -87.6 + Math.random() * 0.1);
+            const { lat, lng } = randomSomaliaCoords();
+            await send(lat, lng);
             resolve();
           }
         );
       });
       setMessage(`Location shared for ${id}`);
     } else {
-      await runAction(`Location shared for ${id}`, () =>
-        send(41.2 + Math.random() * 0.1, -87.6 + Math.random() * 0.1)
-      );
+      await runAction(`Location shared for ${id}`, () => {
+        const { lat, lng } = randomSomaliaCoords();
+        return send(lat, lng);
+      });
     }
   }
 

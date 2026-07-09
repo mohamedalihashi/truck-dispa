@@ -97,6 +97,8 @@ try {
   if (seedResult.seeded) {
     console.log(`PostgreSQL seeded. Demo password: ${seedResult.demoPassword}`);
   }
+  const admin = await db.ensureAdmin();
+  console.log(`Admin account ready: ${admin.email} (password: ${admin.password})`);
 } catch (error) {
   console.warn("Database seed skipped:", error.message);
 }

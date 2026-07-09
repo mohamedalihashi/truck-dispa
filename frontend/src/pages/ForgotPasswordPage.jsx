@@ -3,17 +3,20 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Truck } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { api } from "../services/api";
 
 export function ForgotPasswordPage() {
   const [step, setStep] = useState("email");
   const [pendingEmail, setPendingEmail] = useState("");
+  const [devCode, setDevCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { isSubmitting }
   } = useForm();
 
@@ -24,6 +27,7 @@ export function ForgotPasswordPage() {
       const result = await api.forgotPassword(values.email);
       setPendingEmail(values.email);
       setStep("reset");
+      setDevCode(result.devCode || "");
       setMessage(result.message || "Reset code sent. Check your inbox.");
     } catch (err) {
       setError(err.message);
@@ -83,16 +87,31 @@ export function ForgotPasswordPage() {
               <label className="block text-sm">
                 <span className="mb-1.5 block font-medium text-on-surface-variant">6-digit code</span>
                 <input
-                  className="stitch-input text-center tracking-[0.4em]"
+                  className="stitch-input text-center text-2xl font-semibold tracking-[0.5em]"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
                   maxLength={6}
-                  {...register("code", { required: true, minLength: 6, maxLength: 6 })}
+                  placeholder="• • • • • •"
+                  {...register("code", {
+                    required: true,
+                    minLength: 6,
+                    maxLength: 6,
+                    pattern: /^[0-9]{6}$/
+                  })}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    e.target.value = digits;
+                    setValue("code", digits, { shouldValidate: true });
+                  }}
                 />
               </label>
               <label className="block text-sm">
                 <span className="mb-1.5 block font-medium text-on-surface-variant">New password</span>
                 <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
               </label>
-              {message && <p className="rounded-lg bg-primary-fixed px-3 py-2 text-sm text-primary-container">{message}</p>}
+              <OtpCodeBanner code={devCode || undefined} message={message} />
               {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
               <Button className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? "Resetting…" : "Reset password"}

@@ -4,12 +4,11 @@ import { Link } from "react-router-dom";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
+import { FleetMap } from "../../components/map/FleetMap";
 import { useTripActions, useTrips } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
+import { randomSomaliaCoords } from "../../utils/geo";
 import { nextTripStatus, roleHome } from "../../utils/helpers";
-
-const MAP_IMG =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuAvgSFM7C9zxGI0dbL4BsG6SiX3I_nnO2z7wJ5f8A-e88-SUzPW9d2924TpCNo0r3lwpK23jWfi7AK_fCUpE9RtLQO8AV_btGaPvIELjHgW0bsRyT7VDvavzWBFUgXJTVyxhL14simHhF44emgfmJecOnJpoxrwc6VF3N0xvPNsNpdqyszT6RjVT1wnQLSw4yBRHYeNaaBwwkL74h3xPY5mVcg1sd4K0S2jNAcSea7CEpXe7IZ6y5S_gBeEklkvRoJBnOMcoKi1kfE";
 
 export function TrackingPage() {
   const { user } = useAuth();
@@ -25,12 +24,9 @@ export function TrackingPage() {
 
   async function refreshLocation(trip) {
     if (!trip) return;
+    const { lat, lng } = randomSomaliaCoords();
     try {
-      await actions.shareLocation.mutateAsync({
-        id: trip.id,
-        lat: 41.2 + Math.random() * 2,
-        lng: -87.6 + Math.random() * 2
-      });
+      await actions.shareLocation.mutateAsync({ id: trip.id, lat, lng });
     } catch (err) {
       alert(err.message);
     }
@@ -50,7 +46,7 @@ export function TrackingPage() {
         title="Live Tracking"
         subtitle={
           user.role === "customer"
-            ? "Track your active shipments in real time."
+            ? "Track your active shipments across Somalia in real time."
             : "Realtime trip positions and dispatcher status controls."
         }
         actions={
@@ -66,7 +62,7 @@ export function TrackingPage() {
         <section className="col-span-12 flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-8">
           <div className="flex items-center justify-between border-b border-outline-variant px-6 py-5">
             <div>
-              <h2 className="text-xl font-semibold text-on-surface">Fleet Map</h2>
+              <h2 className="text-xl font-semibold text-on-surface">Fleet Map — Somalia</h2>
               <p className="text-xs text-on-surface-variant">{live.length} active loads on corridor</p>
             </div>
             <div className="flex gap-2">
@@ -78,16 +74,20 @@ export function TrackingPage() {
               </button>
             </div>
           </div>
-          <div className="relative flex-1">
-            <img src={MAP_IMG} alt="Live fleet map" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-primary-container/50 to-transparent" />
-            <div className="absolute inset-4 grid content-end gap-3 sm:grid-cols-2">
+          <div className="relative min-h-[400px] flex-1">
+            <FleetMap
+              trips={live}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+              className="absolute inset-0 h-full w-full"
+            />
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 grid gap-3 sm:grid-cols-2">
               {live.slice(0, 4).map((trip) => (
                 <button
                   key={trip.id}
                   type="button"
                   onClick={() => setSelectedId(trip.id)}
-                  className={`rounded-xl border p-4 text-left text-white backdrop-blur transition ${
+                  className={`pointer-events-auto rounded-xl border p-4 text-left text-white backdrop-blur transition ${
                     selected?.id === trip.id
                       ? "border-secondary-container bg-primary-container"
                       : "border-white/20 bg-primary-container/80"
@@ -102,7 +102,7 @@ export function TrackingPage() {
                   </p>
                   <p className="mt-2 text-xs text-on-primary-container/80">
                     {trip.lastLocation
-                      ? `${Number(trip.lastLocation.lat).toFixed(2)}, ${Number(trip.lastLocation.lng).toFixed(2)}`
+                      ? `${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
                       : "Awaiting GPS ping"}
                   </p>
                 </button>
@@ -119,11 +119,12 @@ export function TrackingPage() {
             {live.map((trip) => (
               <article
                 key={trip.id}
-                className={`rounded-lg border p-4 transition ${
+                className={`cursor-pointer rounded-lg border p-4 transition ${
                   selected?.id === trip.id
                     ? "border-secondary-container bg-secondary-fixed/20"
                     : "border-outline-variant hover:bg-surface-container-low"
                 }`}
+                onClick={() => setSelectedId(trip.id)}
               >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-primary-container">
@@ -138,8 +139,13 @@ export function TrackingPage() {
                 <p className="mt-1 text-sm font-medium">
                   {trip.pickup} → {trip.destination}
                 </p>
+                {trip.lastLocation && (
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    GPS: {Number(trip.lastLocation.lat).toFixed(4)}, {Number(trip.lastLocation.lng).toFixed(4)}
+                  </p>
+                )}
                 {canManage && (
-                  <div className="mt-3 flex flex-wrap gap-1">
+                  <div className="mt-3 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button className="px-2 py-1 text-xs" onClick={() => updateStatus(trip, nextTripStatus(trip.status))}>
                       Advance
                     </Button>

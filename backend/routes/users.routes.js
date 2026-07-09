@@ -1,15 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import bcrypt from "bcryptjs";
+import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
+import { generateTempPassword } from "../lib/password.js";
+import { sendWelcomeEmail } from "../services/emailService.js";
 
 const router = Router();
 
 const createSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(6).optional(),
   role: z.enum(["admin", "dispatcher", "customer", "driver"]),
   phone: z.string().optional(),
   truck: z
@@ -23,6 +26,7 @@ const createSchema = z.object({
 });
 
 router.use(requireAuth);
+router.use(requirePasswordChanged);
 
 router.get("/", requireRole("admin", "dispatcher"), async (req, res, next) => {
   try {
@@ -52,8 +56,33 @@ router.post("/", requireRole("admin"), validate(createSchema), async (req, res, 
     }
     const existing = await db.findUserByEmail(req.body.email);
     if (existing) return res.status(409).json({ message: "Email already registered" });
-    const user = await db.createUser(req.body);
-    res.status(201).json(user);
+
+    const tempPassword = req.body.password || generateTempPassword();
+    const { code } = await db.createVerificationCode({
+      email: req.body.email,
+      purpose: "login",
+      ttlMinutes: 24 * 60
+    });
+
+    const user = await db.createUser({
+      name: req.body.name,
+      email: req.body.email,
+      password: tempPassword,
+      role: req.body.role,
+      phone: req.body.phone,
+      truck: req.body.truck,
+      mustChangePassword: true,
+      actorId: req.user.sub
+    });
+
+    const emailResult = await sendWelcomeEmail(req.body.email, tempPassword, code);
+
+    res.status(201).json({
+      user,
+      message: `Account created. Temporary password and login code sent to ${req.body.email}.`,
+      devCode: emailResult.devCode,
+      devPassword: emailResult.devPassword
+    });
   } catch (error) {
     next(error);
   }

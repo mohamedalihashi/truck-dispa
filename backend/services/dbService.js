@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma.js";
-
-const DEMO_PASSWORD = "Password123!";
+import { ADMIN, DEMO_PASSWORD } from "../config/seed.js";
 
 // ─── Status mapping helpers ──────────────────────────────────────────
 // Prisma enum values use underscores; the API uses spaces.
@@ -21,6 +20,7 @@ function mapUser(row) {
     role: row.role,
     phone: row.phone,
     status: row.status,
+    mustChangePassword: Boolean(row.mustChangePassword),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     truckId: row.truck?.id || null,
@@ -148,141 +148,30 @@ const tripInclude = {
 export { prisma } from "../lib/prisma.js";
 
 export const db = {
+  async ensureAdmin() {
+    const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+    await prisma.user.upsert({
+      where: { email: ADMIN.email },
+      update: {
+        passwordHash,
+        status: "Active",
+        role: ADMIN.role,
+        name: ADMIN.name,
+        phone: ADMIN.phone,
+      },
+      create: { ...ADMIN, passwordHash },
+    });
+    return { password: DEMO_PASSWORD, email: ADMIN.email };
+  },
+
   async seedIfEmpty() {
     const count = await prisma.user.count();
     if (count > 0) return { seeded: false };
 
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
-
-    try {
-      await prisma.$transaction(async (tx) => {
-      const roles = [
-        { name: "System Admin", email: "admin@truckdispatch.local", role: "admin", phone: "+10000000001" },
-        { name: "Alex Thompson", email: "dispatcher@truckdispatch.local", role: "dispatcher", phone: "+10000000002" },
-        { name: "Retail Solutions", email: "customer@truckdispatch.local", role: "customer", phone: "+10000000003" },
-        { name: "Mike Driver", email: "driver@truckdispatch.local", role: "driver", phone: "+10000000004" },
-        { name: "Sarah Miller", email: "driver2@truckdispatch.local", role: "driver", phone: "+10000000005" },
-        { name: "Robert Brown", email: "driver3@truckdispatch.local", role: "driver", phone: "+10000000006" },
-      ];
-
-      const userIds = {};
-      for (const { name, email, role, phone } of roles) {
-        const user = await tx.user.create({ data: { name, email, passwordHash, role, phone } });
-        userIds[email] = user.id;
-      }
-
-      for (const name of ["Box Truck", "Flatbed", "Refrigerated", "Tanker"]) {
-        await tx.truckType.upsert({
-          where: { name },
-          update: {},
-          create: { name, description: `${name} category` },
-        });
-      }
-
-      const truckDefs = [
-        { truckNumber: "Freightliner #82", plateNumber: "TX-82-LC", capacity: "12 tons", truckType: "Box Truck", driverEmail: "driver@truckdispatch.local", status: "Busy" },
-        { truckNumber: "Peterbilt #45", plateNumber: "GA-45-FL", capacity: "18 tons", truckType: "Flatbed", driverEmail: "driver2@truckdispatch.local", status: "Available" },
-        { truckNumber: "Kenworth #12", plateNumber: "AZ-12-KW", capacity: "10 tons", truckType: "Refrigerated", driverEmail: "driver3@truckdispatch.local", status: "Maintenance" },
-      ];
-
-      const truckIds = {};
-      for (const { truckNumber, plateNumber, capacity, truckType, driverEmail, status } of truckDefs) {
-        const truck = await tx.truck.create({
-          data: { truckNumber, plateNumber, capacity, truckType, driverId: userIds[driverEmail], status },
-        });
-        truckIds[driverEmail] = { id: truck.id, truckNumber: truck.truckNumber };
-      }
-
-      const customerId = userIds["customer@truckdispatch.local"];
-      const dispatcherId = userIds["dispatcher@truckdispatch.local"];
-      const driver1 = userIds["driver@truckdispatch.local"];
-      const driver2 = userIds["driver2@truckdispatch.local"];
-
-      const requests = [
-        { id: "REQ-9012", pickup: "New York", destination: "Chicago", truckType: "Box Truck", weight: "1.4 tons", description: "Electronics", status: "Pending" },
-        { id: "REQ-9013", pickup: "Dallas", destination: "Houston", truckType: "Flatbed", weight: "2.1 tons", description: "Furniture", status: "Pending" },
-        { id: "REQ-9014", pickup: "Atlanta", destination: "Miami", truckType: "Refrigerated", weight: "4.0 tons", description: "Beverages", status: "Pending" },
-        { id: "REQ-9015", pickup: "Seattle", destination: "Portland", truckType: "Box Truck", weight: "0.8 tons", description: "Food Items", status: "Assigned" },
-      ];
-
-      for (const req of requests) {
-        await tx.cargoRequest.create({
-          data: {
-            id: req.id,
-            customerId,
-            pickup: req.pickup,
-            destination: req.destination,
-            truckType: req.truckType,
-            weight: req.weight,
-            description: req.description,
-            sender: "Retail Solutions",
-            receiver: "Warehouse Desk",
-            status: reqStatusToDb(req.status),
-            driverId: req.status === "Assigned" ? driver2 : null,
-            truckId: req.status === "Assigned" ? truckIds["driver2@truckdispatch.local"].id : null,
-            dispatcherId: req.status === "Assigned" ? dispatcherId : null,
-          },
-        });
-      }
-
-      await tx.trip.createMany({
-        data: [
-          {
-            id: "SHP-1001", customerId, driverId: driver1, dispatcherId,
-            truckId: truckIds["driver@truckdispatch.local"].id,
-            pickup: "Chicago, IL", destination: "Houston, TX",
-            distance: "1,084 mi", estimatedTime: "18h 45m",
-            status: "In_Transit", fare: 2450,
-            lastLat: 41.5, lastLng: -87.6, lastLocationAt: new Date(),
-          },
-          {
-            id: "SHP-1003", customerId, driverId: driver2, dispatcherId,
-            truckId: truckIds["driver2@truckdispatch.local"].id,
-            pickup: "Atlanta, GA", destination: "Miami, FL",
-            distance: "662 mi", estimatedTime: "10h 20m",
-            status: "Delayed", fare: 1890,
-            lastLat: 25.7, lastLng: -80.2, lastLocationAt: new Date(),
-          },
-          {
-            id: "SHP-10294", cargoRequestId: "REQ-9015", customerId,
-            driverId: driver2, dispatcherId,
-            truckId: truckIds["driver2@truckdispatch.local"].id,
-            pickup: "Chicago, IL", destination: "New York, NY",
-            distance: "790 mi", estimatedTime: "12h 30m",
-            status: "In_Transit", fare: 2100,
-            lastLat: 41.4, lastLng: -81.7, lastLocationAt: new Date(),
-          },
-        ],
-      });
-
-      await tx.payment.createMany({
-        data: [
-          { tripId: "SHP-1001", customerId, amount: 2450, status: "Paid", method: "card" },
-          { tripId: "SHP-1003", customerId, amount: 1890, status: "Pending", method: "card" },
-          { tripId: "SHP-10294", customerId, amount: 2100, status: "Paid", method: "card" },
-        ],
-      });
-
-      await tx.setting.createMany({
-        data: [
-          { key: "general", value: { companyName: "TruckDispatch", supportEmail: "support@truckdispatch.local", currency: "USD" } },
-          { key: "notifications", value: { email: true, sms: false, push: true } },
-        ],
-      });
-
-      await tx.notification.createMany({
-        data: [
-          { userId: dispatcherId, type: "order.created", message: "New cargo request REQ-9012 created" },
-          { userId: driver1, type: "driver.assigned", message: "SHP-1001 assigned to Mike Driver" },
-          { userId: customerId, type: "cargo.delivered", message: "Previous shipment delivered successfully" },
-        ],
-      });
-    }, { timeout: 60_000, maxWait: 15_000 });
-    } catch (error) {
-      const exists = await prisma.user.count();
-      if (exists > 0) return { seeded: false };
-      throw error;
-    }
+    await prisma.user.create({
+      data: { ...ADMIN, passwordHash },
+    });
 
     return { seeded: true, demoPassword: DEMO_PASSWORD };
   },
@@ -329,11 +218,18 @@ export const db = {
     return { data: data.map(mapUser), total, page: Number(page) };
   },
 
-  async createUser({ name, email, password, role, phone, truck }) {
+  async createUser({ name, email, password, role, phone, truck, mustChangePassword = false, actorId = null }) {
     return prisma.$transaction(async (tx) => {
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await tx.user.create({
-        data: { name, email, passwordHash, role, phone: phone || null },
+        data: {
+          name,
+          email,
+          passwordHash,
+          role,
+          phone: phone || null,
+          mustChangePassword: Boolean(mustChangePassword),
+        },
       });
 
       let truckRow = null;
@@ -357,11 +253,11 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId: user.id,
+          actorId: actorId || user.id,
           action: "user.created",
           entity: "users",
           entityId: user.id,
-          meta: { role },
+          meta: { role, mustChangePassword: Boolean(mustChangePassword) },
         },
       });
 
@@ -376,7 +272,10 @@ export const db = {
     if (payload.phone !== undefined) data.phone = payload.phone;
     if (payload.status !== undefined) data.status = payload.status;
     if (payload.role !== undefined) data.role = payload.role;
-    if (payload.password) data.passwordHash = await bcrypt.hash(payload.password, 10);
+    if (payload.password) {
+      data.passwordHash = await bcrypt.hash(payload.password, 10);
+      data.mustChangePassword = false;
+    }
 
     if (Object.keys(data).length > 0) {
       await prisma.user.update({ where: { id }, data });

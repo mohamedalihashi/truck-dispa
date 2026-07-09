@@ -1,20 +1,23 @@
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
-import { Truck } from "lucide-react";
+import { Truck, Eye, EyeOff } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
+import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, roleHome } from "../utils/helpers";
+import { roleHome, DEMO_ACCOUNTS, DEMO_PASSWORD } from "../utils/helpers";
 
 export function LoginPage() {
   const { login, verifyLogin, resendCode, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState(location.state?.step === "verify" ? "verify" : "credentials");
   const [pendingEmail, setPendingEmail] = useState(location.state?.email || "");
   const [pendingPassword, setPendingPassword] = useState(location.state?.password || "");
+  const [devCode, setDevCode] = useState("");
   const [info, setInfo] = useState(location.state?.step === "verify" ? "Check your email for the verification code." : "");
   const {
     register,
@@ -23,8 +26,8 @@ export function LoginPage() {
     formState: { isSubmitting }
   } = useForm({
     defaultValues: {
-      email: location.state?.email || "customer@truckdispatch.local",
-      password: location.state?.password || DEMO_PASSWORD,
+      email: location.state?.email || "",
+      password: location.state?.password || "",
       code: ""
     }
   });
@@ -44,6 +47,7 @@ export function LoginPage() {
       if (result.verificationRequired) {
         setPendingEmail(values.email);
         setPendingPassword(values.password);
+        setDevCode(result.devCode || "");
         setStep("verify");
         setInfo(result.message);
         setValue("code", "");
@@ -51,7 +55,11 @@ export function LoginPage() {
       }
       navigate(roleHome(result.user.role));
     } catch (err) {
-      setError(err.message);
+      const hint =
+        err.message === "Invalid email or password"
+          ? " Use a demo account below (password: Password123!) or reset your password."
+          : "";
+      setError(`${err.message}${hint}`);
     }
   }
 
@@ -60,6 +68,10 @@ export function LoginPage() {
     setInfo("");
     try {
       const result = await verifyLogin({ email: pendingEmail, code: values.code });
+      if (result.user?.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
       navigate(roleHome(result.user.role));
     } catch (err) {
       setError(err.message);
@@ -75,6 +87,10 @@ export function LoginPage() {
         purpose: "login"
       });
       setInfo(result.message);
+      if (result.devCode) {
+        setDevCode(result.devCode);
+        setValue("code", result.devCode);
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -114,7 +130,20 @@ export function LoginPage() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1.5 block font-medium text-on-surface-variant">Password</span>
-                <input className="stitch-input" type="password" {...register("password", { required: true })} />
+                <div className="relative">
+                  <input 
+                    className="stitch-input w-full pr-10" 
+                    type={showPassword ? "text" : "password"} 
+                    {...register("password", { required: true })} 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </label>
               {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
               <div className="flex items-center justify-between text-sm">
@@ -138,14 +167,30 @@ export function LoginPage() {
               <label className="block text-sm">
                 <span className="mb-1.5 block font-medium text-on-surface-variant">6-digit code</span>
                 <input
-                  className="stitch-input text-center text-lg tracking-[0.4em]"
+                  className="stitch-input text-center text-2xl font-semibold tracking-[0.5em]"
+                  type="text"
                   inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
                   maxLength={6}
-                  placeholder="000000"
-                  {...register("code", { required: true, minLength: 6, maxLength: 6 })}
+                  placeholder="• • • • • •"
+                  {...register("code", {
+                    required: true,
+                    minLength: 6,
+                    maxLength: 6,
+                    pattern: /^[0-9]{6}$/
+                  })}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    e.target.value = digits;
+                    setValue("code", digits, { shouldValidate: true });
+                  }}
                 />
               </label>
-              {info && <p className="rounded-lg bg-secondary-fixed/40 px-3 py-2 text-sm text-on-surface">{info}</p>}
+              <p className="text-xs text-on-surface-variant">
+                Geli 6-digit code-ka aad ka heshay email-kaaga (eeg spam folder).
+              </p>
+              <OtpCodeBanner code={devCode || undefined} message={info} />
               {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
               <Button className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? "Verifying…" : "Sign in"}
@@ -165,31 +210,13 @@ export function LoginPage() {
             </form>
           )}
 
-          {step === "credentials" && (
-            <div className="mt-6 grid gap-2 sm:grid-cols-2">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.email}
-                  type="button"
-                  className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-left text-sm hover:bg-surface-container"
-                  onClick={() => {
-                    setValue("email", account.email);
-                    setValue("password", DEMO_PASSWORD);
-                  }}
-                >
-                  <strong className="block text-primary">{account.label}</strong>
-                  <span className="text-xs text-on-surface-variant">{account.email}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
           <p className="mt-6 text-center text-sm text-on-surface-variant">
             New here?{" "}
             <Link className="font-semibold text-secondary-container hover:underline" to="/register">
               Create account
             </Link>
           </p>
+
         </div>
       </div>
     </div>

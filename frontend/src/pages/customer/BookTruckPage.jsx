@@ -17,7 +17,7 @@ export function BookTruckPage() {
     formState: { isSubmitting }
   } = useForm({
     defaultValues: {
-      pickup: "Chicago",
+      pickup: "Mogadishu",
       destination: "New York",
       truckType: "Box Truck",
       weight: "2.0 tons",

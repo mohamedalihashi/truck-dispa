@@ -28,6 +28,7 @@ export const api = {
   login: (payload) => apiClient.post("/auth/login", payload),
   verifyLogin: (payload) => apiClient.post("/auth/login/verify", payload),
   resendCode: (payload) => apiClient.post("/auth/resend-code", payload),
+  changePassword: (payload) => apiClient.post("/auth/change-password", payload),
   me: () => apiClient.get("/auth/me"),
   updateProfile: (payload) => apiClient.patch("/auth/me", payload),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }),

@@ -75,6 +75,7 @@ model User {
   role         UserRole
   phone        String?
   status       String   @default("Active")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 

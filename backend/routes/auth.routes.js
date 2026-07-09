@@ -1,10 +1,10 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { requireAuth, signToken } from "../middleware/auth.js";
+import { requireAuth, signToken, requirePasswordChanged } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
-import { sendVerificationEmail } from "../services/emailService.js";
+import { sendVerificationEmail, verificationPayload } from "../services/emailService.js";
 
 const router = Router();
 
@@ -25,7 +25,7 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().transform((v) => v.trim().toLowerCase()),
   password: z.string().min(1)
 });
 
@@ -34,12 +34,8 @@ const verifySchema = z.object({
   code: z.string().length(6)
 });
 
-function verificationResponse(email) {
-  return {
-    verificationRequired: true,
-    email,
-    message: `Verification code sent to ${email}. Check your inbox.`
-  };
+function verificationResponse(email, emailResult) {
+  return verificationPayload(email, emailResult);
 }
 
 router.post("/register", validate(registerSchema), async (req, res, next) => {
@@ -55,8 +51,8 @@ router.post("/register", validate(registerSchema), async (req, res, next) => {
       purpose: "register",
       payload: req.body
     });
-    await sendVerificationEmail(req.body.email, code, "register");
-    res.status(202).json(verificationResponse(req.body.email));
+    const emailResult = await sendVerificationEmail(req.body.email, code, "register");
+    res.status(202).json(verificationResponse(req.body.email, emailResult));
   } catch (error) {
     next(error);
   }
@@ -99,8 +95,8 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
       email: req.body.email,
       purpose: "login"
     });
-    await sendVerificationEmail(req.body.email, code, "login");
-    res.json(verificationResponse(req.body.email));
+    const emailResult = await sendVerificationEmail(req.body.email, code, "login");
+    res.json(verificationResponse(req.body.email, emailResult));
   } catch (error) {
     next(error);
   }
@@ -151,14 +147,36 @@ router.post("/resend-code", async (req, res, next) => {
     }
 
     const { code } = await db.createVerificationCode({ email, purpose, payload });
-    await sendVerificationEmail(email, code, purpose);
-    res.json(verificationResponse(email));
+    const emailResult = await sendVerificationEmail(email, code, purpose);
+    res.json(verificationResponse(email, emailResult));
   } catch (error) {
     next(error);
   }
 });
 
-router.patch("/me", requireAuth, async (req, res, next) => {
+router.post("/change-password", requireAuth, async (req, res, next) => {
+  try {
+    const schema = z.object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(6)
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Validation failed" });
+
+    const row = await db.findUserByEmail(req.user.email);
+    if (!row?.passwordHash) return res.status(404).json({ message: "User not found" });
+
+    const valid = await bcrypt.compare(parsed.data.currentPassword, row.passwordHash);
+    if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
+
+    const user = await db.updateUser(req.user.sub, { password: parsed.data.newPassword });
+    res.json({ user, token: signToken(user), message: "Password changed successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/me", requireAuth, requirePasswordChanged, async (req, res, next) => {
   try {
     const { name, phone, password } = req.body;
     const payload = {};
@@ -198,8 +216,11 @@ router.post("/forgot-password", async (req, res, next) => {
       email: parsed.data.email,
       purpose: "reset"
     });
-    await sendVerificationEmail(parsed.data.email, code, "reset");
-    res.json({ message: `Password reset code sent to ${parsed.data.email}. Check your inbox.` });
+    const emailResult = await sendVerificationEmail(parsed.data.email, code, "reset");
+    res.json({
+      message: emailResult.userMessage || `Password reset code sent to ${parsed.data.email}. Check your inbox.`,
+      devCode: emailResult.devCode
+    });
   } catch (error) {
     next(error);
   }

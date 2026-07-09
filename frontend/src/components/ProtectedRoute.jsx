@@ -18,6 +18,10 @@ export function ProtectedRoute({ roles }) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (user?.mustChangePassword && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (roles && !roles.includes(user.role)) {
     return <Navigate to={roleHome(user.role)} replace />;
   }

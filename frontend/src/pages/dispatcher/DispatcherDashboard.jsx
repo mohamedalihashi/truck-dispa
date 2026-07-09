@@ -16,6 +16,8 @@ import {
 } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
 import { CANCELABLE_REQUEST_STATUSES, nextTripStatus } from "../../utils/helpers";
+import { FleetMap } from "../../components/map/FleetMap";
+import { randomSomaliaCoords } from "../../utils/geo";
 
 export function DispatcherDashboard() {
   const { user } = useAuth();
@@ -191,13 +193,11 @@ export function DispatcherDashboard() {
               </Link>
             </div>
           </div>
-          <div className="relative flex-1 overflow-hidden">
-            <div className="hero-gradient absolute inset-0">
-              <div className="map-grid absolute inset-0 opacity-40" />
-            </div>
-            <div className="absolute inset-4 space-y-3 overflow-y-auto">
+          <div className="relative min-h-[300px] flex-1 overflow-hidden">
+            <FleetMap trips={live} className="absolute inset-0 h-full w-full" />
+            <div className="absolute inset-x-3 bottom-3 max-h-[45%] space-y-2 overflow-y-auto">
               {live.slice(0, 5).map((trip) => (
-                <div key={trip.id} className="rounded-xl border border-white/10 bg-white/10 p-4 text-white backdrop-blur">
+                <div key={trip.id} className="rounded-xl border border-white/20 bg-primary-container/85 p-3 text-white backdrop-blur">
                   <div className="mb-1 flex items-center justify-between">
                     <strong>{trip.id}</strong>
                     <StatusBadge status={trip.status} />
@@ -216,7 +216,10 @@ export function DispatcherDashboard() {
                     <Button
                       variant="secondary"
                       className="px-2 py-1 text-xs"
-                      onClick={() => tripActions.shareLocation.mutate({ id: trip.id, lat: 41.2 + Math.random(), lng: -87.6 + Math.random() })}
+                      onClick={() => {
+                        const { lat, lng } = randomSomaliaCoords();
+                        tripActions.shareLocation.mutate({ id: trip.id, lat, lng });
+                      }}
                     >
                       GPS
                     </Button>

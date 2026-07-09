@@ -17,6 +17,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { useCargoRequests, useDashboard, useTrips } from "../../hooks/useApi";
 import { money } from "../../utils/helpers";
+import { FleetMap } from "../../components/map/FleetMap";
 
 export function CustomerDashboard() {
   const { data: stats } = useDashboard();
@@ -144,9 +145,7 @@ export function CustomerDashboard() {
             <p className="text-xs text-on-surface-variant">Active Load: {live?.id || "—"}</p>
           </div>
           <div className="relative min-h-[280px] flex-1">
-            <div className="hero-gradient absolute inset-0">
-              <div className="map-grid absolute inset-0 opacity-40" />
-            </div>
+            <FleetMap trips={live ? [live] : active} selectedId={live?.id} className="absolute inset-0 h-full w-full" />
             <div className="absolute left-4 right-4 top-4 z-10 rounded-lg border border-outline-variant bg-surface-container-lowest/90 p-4 shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">

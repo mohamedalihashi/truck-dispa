@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
 
@@ -25,6 +25,7 @@ const assignSchema = z.object({
 });
 
 router.use(requireAuth);
+router.use(requirePasswordChanged);
 
 router.get("/", async (req, res, next) => {
   try {

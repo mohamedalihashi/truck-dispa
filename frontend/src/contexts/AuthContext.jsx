@@ -46,6 +46,10 @@ export function AuthProvider({ children }) {
       async verifyLogin(payload) {
         return completeAuth(await api.verifyLogin(payload));
       },
+      async changePassword(payload) {
+        const result = await api.changePassword(payload);
+        return completeAuth(result);
+      },
       async register(payload) {
         const result = await api.register(payload);
         if (result.verificationRequired) return result;

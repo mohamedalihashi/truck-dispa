@@ -5,6 +5,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { UsersPage } from "./pages/admin/UsersPage";
 import { TrucksPage } from "./pages/admin/TrucksPage";
@@ -40,6 +41,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="/admin" element={<DashboardLayout />}>

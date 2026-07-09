@@ -3,11 +3,13 @@ import jwt from "jsonwebtoken";
 const jwtSecret = process.env.JWT_SECRET || "local-dev-secret-change-me";
 
 export function signToken(user) {
-  return jwt.sign(
-    { sub: user.id, role: user.role, email: user.email },
-    jwtSecret,
-    { expiresIn: "8h" }
-  );
+  const payload = {
+    sub: user.id,
+    role: user.role,
+    email: user.email
+  };
+  if (user.mustChangePassword) payload.mcp = true;
+  return jwt.sign(payload, jwtSecret, { expiresIn: "8h" });
 }
 
 export function requireAuth(req, res, next) {
@@ -23,6 +25,17 @@ export function requireAuth(req, res, next) {
   } catch {
     res.status(401).json({ message: "Invalid or expired token" });
   }
+}
+
+/** Block API access until the user sets a new password (admin-created accounts). */
+export function requirePasswordChanged(req, res, next) {
+  if (req.user?.mcp) {
+    return res.status(403).json({
+      message: "You must change your password before continuing.",
+      mustChangePassword: true
+    });
+  }
+  next();
 }
 
 export function requireRole(...roles) {

@@ -35,10 +35,7 @@ export function nextTripStatus(current) {
 }
 
 export const DEMO_ACCOUNTS = [
-  { role: "admin", email: "admin@truckdispatch.local", label: "Admin" },
-  { role: "dispatcher", email: "dispatcher@truckdispatch.local", label: "Dispatcher" },
-  { role: "customer", email: "customer@truckdispatch.local", label: "Customer" },
-  { role: "driver", email: "driver@truckdispatch.local", label: "Driver" }
+  { role: "admin", email: "wllhero145@gmail.com", label: "Admin" },
 ];
 
 export const DEMO_PASSWORD = "Password123!";
