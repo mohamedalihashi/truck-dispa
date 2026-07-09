@@ -19,7 +19,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Button } from "../../components/ui/Button";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { useAuth } from "../../contexts/AuthContext";
-import { useDashboard, useTripActions, useTripFeedback, useTrips } from "../../hooks/useApi";
+import { useDashboard, useTripActions, useTripFeedback, useTrips, useEarningsSummary } from "../../hooks/useApi";
 import { money, nextTripStatus } from "../../utils/helpers";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { api } from "../../services/api";
@@ -31,6 +31,7 @@ import { randomSomaliaCoords } from "../../utils/geo";
 export function DriverDashboard() {
   const { user } = useAuth();
   const { data: stats } = useDashboard();
+  const { data: earnings } = useEarningsSummary();
   const { data: trips } = useTrips();
   const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 6 });
   const actions = useTripActions();
@@ -92,8 +93,8 @@ export function DriverDashboard() {
         <CenterMetric
           icon={Wallet}
           tone="bg-secondary-container text-on-secondary"
-          value={money(stats?.revenue)}
-          label="Earnings (Weekly)"
+          value={money(earnings?.available ?? 0)}
+          label="Earnings (available)"
         />
         <CenterMetric
           icon={Star}

@@ -109,6 +109,7 @@ export function useRealtimeInvalidation() {
     qc.invalidateQueries({ queryKey: ["reports"] });
     qc.invalidateQueries({ queryKey: ["trip-feedback"] });
     qc.invalidateQueries({ queryKey: ["payments"] });
+    qc.invalidateQueries({ queryKey: ["earnings"] });
   }, [events[0]?.id, qc]);
 
   // Vercel has no WebSocket server — poll API every 20s when logged in.
@@ -124,6 +125,7 @@ export function useRealtimeInvalidation() {
       qc.invalidateQueries({ queryKey: ["reports"] });
       qc.invalidateQueries({ queryKey: ["trip-feedback"] });
       qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["earnings"] });
     };
 
     const timer = setInterval(invalidateAll, 20_000);
@@ -206,6 +208,7 @@ export function usePaymentMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["payments"] });
+    qc.invalidateQueries({ queryKey: ["earnings"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     qc.invalidateQueries({ queryKey: ["reports"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
@@ -229,6 +232,45 @@ export function usePaymentMutations() {
     }),
     payWithWaafi: useMutation({
       mutationFn: (payload) => api.payWithWaafi(payload),
+      onSuccess: () => {
+        invalidate();
+        qc.invalidateQueries({ queryKey: ["earnings"] });
+      }
+    })
+  };
+}
+
+export function useEarnings(params = {}, options = {}) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  return useQuery({
+    queryKey: ["earnings", isAdmin ? "all" : "me", params],
+    queryFn: () => (isAdmin ? api.getEarnings(params) : api.getMyEarnings(params)),
+    ...options
+  });
+}
+
+export function useEarningsSummary() {
+  return useQuery({
+    queryKey: ["earnings", "summary"],
+    queryFn: () => api.getEarningsSummary()
+  });
+}
+
+export function useEarningMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["earnings"] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+  return {
+    payout: useMutation({
+      mutationFn: ({ id, ...payload }) => api.payoutEarning(id, payload),
+      onSuccess: invalidate
+    }),
+    payoutAll: useMutation({
+      mutationFn: ({ userId, ...payload }) => api.payoutUserEarnings(userId, payload),
       onSuccess: invalidate
     })
   };

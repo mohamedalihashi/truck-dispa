@@ -127,6 +127,7 @@ export function navForRole(role) {
       { to: "users", label: "Users", icon: "users" },
       { to: "trucks", label: "Fleet", icon: "truck" },
       { to: "payments", label: "Finance", icon: "chart" },
+      { to: "earnings", label: "Payouts", icon: "chart" },
       { to: "tracking", label: "Live Tracking", icon: "map" },
       { to: "reports", label: "Reports", icon: "chart" },
       { to: "audit-logs", label: "Audit Logs", icon: "file" },
@@ -138,7 +139,8 @@ export function navForRole(role) {
       ...common,
       { to: "requests", label: "Requests", icon: "file" },
       { to: "trucks", label: "Trucks", icon: "truck" },
-      { to: "tracking", label: "Live Tracking", icon: "map" }
+      { to: "tracking", label: "Live Tracking", icon: "map" },
+      { to: "earnings", label: "Earnings", icon: "chart" }
     ];
   }
   if (role === "driver") {
@@ -146,6 +148,7 @@ export function navForRole(role) {
       { to: "", end: true, label: "Dashboard", icon: "dashboard" },
       { to: "jobs", label: "My Jobs", icon: "route" },
       { to: "truck", label: "My Truck", icon: "truck" },
+      { to: "earnings", label: "Earnings", icon: "chart" },
       { to: "notifications", label: "Notifications", icon: "bell" }
     ];
   }

@@ -26,6 +26,7 @@ import { TripsPage } from "./pages/shared/TripsPage";
 import { NotificationsPage } from "./pages/shared/NotificationsPage";
 import { TrackingPage } from "./pages/shared/TrackingPage";
 import { PaymentsPage } from "./pages/shared/PaymentsPage";
+import { EarningsPage } from "./pages/shared/EarningsPage";
 import { ProfilePage } from "./pages/shared/ProfilePage";
 import { useAuth } from "./contexts/AuthContext";
 import { roleHome } from "./utils/helpers";
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="trips" element={<TripsPage />} />
           <Route path="tracking" element={<TrackingPage />} />
           <Route path="payments" element={<PaymentsPage />} />
+          <Route path="earnings" element={<EarningsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -72,6 +74,7 @@ export default function App() {
           <Route path="trips" element={<TripsPage />} />
           <Route path="trucks" element={<TrucksPage />} />
           <Route path="tracking" element={<TrackingPage />} />
+          <Route path="earnings" element={<EarningsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
@@ -96,6 +99,7 @@ export default function App() {
           <Route path="jobs" element={<DriverJobsPage />} />
           <Route path="trips" element={<DriverJobsPage />} />
           <Route path="truck" element={<DriverTruckPage />} />
+          <Route path="earnings" element={<EarningsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>

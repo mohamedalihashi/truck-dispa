@@ -8,6 +8,7 @@ import {
   isWaafiSuccess,
   waafiPurchase
 } from "./waafiPayService.js";
+import { getCommissionSettings, syncEarningsForPayment } from "./commissionService.js";
 
 // ─── Status mapping helpers ──────────────────────────────────────────
 // Prisma enum values use underscores; the API uses spaces.
@@ -1533,10 +1534,13 @@ export const db = {
         )
       );
 
+      const earnings = await syncEarningsForPayment(paymentId);
+
       return {
         payment: this.mapPayment(updated),
         notification: customerNotification,
         adminNotifications,
+        earnings,
       };
     }
 
@@ -1576,6 +1580,9 @@ export const db = {
     }
 
     const payment = await prisma.payment.create({ data });
+    if (Number(payment.amountPaid) > 0) {
+      await syncEarningsForPayment(payment.id);
+    }
     const customer = await prisma.user.findUnique({ where: { id: payment.customerId } });
     return this.mapPayment(payment, customer?.name);
   },
@@ -1613,6 +1620,7 @@ export const db = {
     }).catch(() => null);
 
     if (!payment) return null;
+    await syncEarningsForPayment(id);
     return this.mapPayment(payment);
   },
 
@@ -1674,6 +1682,183 @@ export const db = {
       data: data.map((row) => this.mapPayment(row)),
       total: data.length,
     };
+  },
+
+  // ── Earnings & payouts ───────────────────────────────────────────
+
+  mapEarning(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      paymentId: row.paymentId,
+      tripId: row.tripId,
+      recipientId: row.recipientId,
+      recipient: row.recipient?.name || (row.recipientRole === "platform" ? "Platform" : null),
+      recipientRole: row.recipientRole,
+      amount: Number(row.amount),
+      percent: Number(row.percent),
+      currency: row.currency,
+      status: row.status,
+      payoutMethod: row.payoutMethod,
+      payoutReference: row.payoutReference,
+      paidOutAt: row.paidOutAt,
+      createdAt: row.createdAt,
+    };
+  },
+
+  async listEarnings({ recipientId, recipientRole, status, page = 1, limit = 50 } = {}) {
+    const where = {};
+    if (recipientId) where.recipientId = recipientId;
+    if (recipientRole) where.recipientRole = recipientRole;
+    if (status) where.status = status;
+
+    const offset = (Number(page) - 1) * Number(limit);
+    const data = await prisma.earning.findMany({
+      where,
+      include: { recipient: true },
+      orderBy: { createdAt: "desc" },
+      take: Number(limit),
+      skip: offset,
+    });
+
+    return {
+      data: data.map((row) => this.mapEarning(row)),
+      total: data.length,
+    };
+  },
+
+  async getEarningsSummary({ userId, role } = {}) {
+    if (role === "admin") {
+      const [platformAvailable, platformPaid, driverPending, dispatcherPending] = await Promise.all([
+        prisma.earning.aggregate({
+          where: { recipientRole: "platform", status: "Available" },
+          _sum: { amount: true },
+        }),
+        prisma.earning.aggregate({
+          where: { recipientRole: "platform", status: "PaidOut" },
+          _sum: { amount: true },
+        }),
+        prisma.earning.aggregate({
+          where: { recipientRole: "driver", status: "Available" },
+          _sum: { amount: true },
+        }),
+        prisma.earning.aggregate({
+          where: { recipientRole: "dispatcher", status: "Available" },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      return {
+        platformAvailable: Number(platformAvailable._sum.amount || 0),
+        platformPaidOut: Number(platformPaid._sum.amount || 0),
+        driverOwed: Number(driverPending._sum.amount || 0),
+        dispatcherOwed: Number(dispatcherPending._sum.amount || 0),
+        commission: await getCommissionSettings(),
+      };
+    }
+
+    const where = { recipientId: userId };
+    const [available, paidOut, total] = await Promise.all([
+      prisma.earning.aggregate({
+        where: { ...where, status: "Available" },
+        _sum: { amount: true },
+      }),
+      prisma.earning.aggregate({
+        where: { ...where, status: "PaidOut" },
+        _sum: { amount: true },
+      }),
+      prisma.earning.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return {
+      available: Number(available._sum.amount || 0),
+      paidOut: Number(paidOut._sum.amount || 0),
+      totalEarned: Number(total._sum.amount || 0),
+      commission: await getCommissionSettings(),
+    };
+  },
+
+  async payoutEarning(id, { actorId, payoutMethod = "manual", payoutReference }) {
+    const earning = await prisma.earning.findUnique({
+      where: { id },
+      include: { recipient: true },
+    });
+
+    if (!earning) {
+      const error = new Error("Earning not found");
+      error.status = 404;
+      throw error;
+    }
+    if (earning.status === "PaidOut") {
+      const error = new Error("This earning is already paid out");
+      error.status = 409;
+      throw error;
+    }
+    if (earning.recipientRole === "platform") {
+      const error = new Error("Platform earnings are kept by admin — no payout needed");
+      error.status = 400;
+      throw error;
+    }
+
+    const updated = await prisma.earning.update({
+      where: { id },
+      data: {
+        status: "PaidOut",
+        payoutMethod,
+        payoutReference: payoutReference || null,
+        paidOutAt: new Date(),
+      },
+      include: { recipient: true },
+    });
+
+    if (updated.recipientId) {
+      await prisma.notification.create({
+        data: {
+          userId: updated.recipientId,
+          type: "earning.paid",
+          message: `Payout of ${Number(updated.amount).toFixed(2)} ${updated.currency || "SLSH"} sent (${payoutMethod}).`,
+        },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorId,
+        action: "earning.paid_out",
+        entity: "earning",
+        entityId: id,
+        meta: {
+          recipientId: updated.recipientId,
+          amount: Number(updated.amount),
+          payoutMethod,
+        },
+      },
+    });
+
+    return this.mapEarning(updated);
+  },
+
+  async payoutUserEarnings({ userId, actorId, payoutMethod = "manual", payoutReference }) {
+    const available = await prisma.earning.findMany({
+      where: { recipientId: userId, status: "Available" },
+    });
+
+    if (!available.length) {
+      const error = new Error("No available earnings to pay out");
+      error.status = 404;
+      throw error;
+    }
+
+    const results = [];
+    for (const earning of available) {
+      results.push(
+        await this.payoutEarning(earning.id, { actorId, payoutMethod, payoutReference })
+      );
+    }
+    return results;
   },
 
   // ── Verification codes ─────────────────────────────────────────

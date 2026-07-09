@@ -70,6 +70,21 @@ enum PaymentStatus {
   @@map("payment_status")
 }
 
+enum EarningRole {
+  driver
+  dispatcher
+  platform
+
+  @@map("earning_role")
+}
+
+enum EarningStatus {
+  Available
+  PaidOut
+
+  @@map("earning_status")
+}
+
 // ─── Models ──────────────────────────────────────────────────────────
 
 model User {
@@ -94,6 +109,7 @@ model User {
   tripsAsDispatcher     Trip[]         @relation("TripDispatcher")
   notifications         Notification[]
   paymentsAsCustomer    Payment[]      @relation("PaymentCustomer")
+  earningsAsRecipient   Earning[]      @relation("EarningRecipient")
   auditLogs             AuditLog[]
   feedbackAsCustomer    TripFeedback[] @relation("FeedbackCustomer")
   feedbackAsDriver      TripFeedback[] @relation("FeedbackDriver")
@@ -194,6 +210,7 @@ model Trip {
   dispatcher   User?         @relation("TripDispatcher", fields: [dispatcherId], references: [id])
   truck        Truck?        @relation(fields: [truckId], references: [id])
   payments     Payment[]
+  earnings     Earning[]
   feedback     TripFeedback?
 
   @@index([status], map: "idx_trips_status")
@@ -234,8 +251,32 @@ model Payment {
   // Relations
   trip     Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
   customer User? @relation("PaymentCustomer", fields: [customerId], references: [id])
+  earnings Earning[]
 
   @@map("payments")
+}
+
+model Earning {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId       String?       @map("payment_id") @db.Uuid
+  tripId          String?       @map("trip_id")
+  recipientId     String?       @map("recipient_id") @db.Uuid
+  recipientRole   EarningRole   @map("recipient_role")
+  amount          Decimal       @db.Decimal(12, 2)
+  percent         Decimal       @db.Decimal(5, 2)
+  currency        String?       @default("SLSH")
+  status          EarningStatus @default(Available)
+  payoutMethod    String?       @map("payout_method")
+  payoutReference String?       @map("payout_reference")
+  paidOutAt       DateTime?     @map("paid_out_at") @db.Timestamptz()
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  recipient User?    @relation("EarningRecipient", fields: [recipientId], references: [id])
+
+  @@index([recipientId, status], map: "idx_earnings_recipient")
+  @@map("earnings")
 }
 
 model Setting {

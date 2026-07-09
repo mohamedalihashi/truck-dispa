@@ -49,6 +49,9 @@ router.post("/waafi/purchase", requireRole("customer"), async (req, res, next) =
       for (const notification of result.adminNotifications || []) {
         io.emit("notification.created", notification);
       }
+      if (result.earnings?.length) {
+        io.emit("earnings.distributed", { paymentId, count: result.earnings.length });
+      }
     }
 
     res.json(result.payment);

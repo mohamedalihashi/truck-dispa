@@ -13,10 +13,11 @@ import {
   useTripActions,
   useTripFeedback,
   useTrips,
-  useTrucks
+  useTrucks,
+  useEarningsSummary
 } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
-import { CANCELABLE_REQUEST_STATUSES, nextTripStatus } from "../../utils/helpers";
+import { CANCELABLE_REQUEST_STATUSES, money, nextTripStatus } from "../../utils/helpers";
 import { FleetMap } from "../../components/map/FleetMap";
 import { TripFeedbackPanel } from "../../components/TripFeedbackPanel";
 import { randomSomaliaCoords } from "../../utils/geo";
@@ -25,6 +26,7 @@ export function DispatcherDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: stats } = useDashboard();
+  const { data: earnings } = useEarningsSummary();
   const { data: requests } = useCargoRequests({ status: "Pending" });
   const { data: trucks } = useTrucks({ status: "Available" });
   const { data: trips } = useTrips();
@@ -79,7 +81,7 @@ export function DispatcherDashboard() {
         }
       />
 
-      <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           icon={FileText}
           tone="bg-primary-container/10 text-primary-container"
@@ -111,6 +113,14 @@ export function DispatcherDashboard() {
           value={stats?.inTransit ?? live.length}
           hint="Live"
           hintTone="text-secondary bg-secondary-fixed"
+        />
+        <MetricCard
+          icon={Star}
+          tone="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+          label="Commission (available)"
+          value={money(earnings?.available ?? 0)}
+          hint="SLSH"
+          hintTone="text-on-surface-variant"
         />
       </section>
 

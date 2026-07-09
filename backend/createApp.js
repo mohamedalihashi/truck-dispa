@@ -12,6 +12,7 @@ import reportRoutes from "./routes/reports.routes.js";
 import userRoutes from "./routes/users.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import paymentRoutes from "./routes/payments.routes.js";
+import earningsRoutes from "./routes/earnings.routes.js";
 
 export function createNoopIo() {
   const noop = () => {};
@@ -86,6 +87,7 @@ export function createApp({ io } = {}) {
   app.use("/api/notifications", notificationRoutes);
   app.use("/api/reports", reportRoutes);
   app.use("/api/payments", paymentRoutes);
+  app.use("/api/earnings", earningsRoutes);
   app.use("/api/admin", adminRoutes);
   app.use(notFound);
   app.use(errorHandler);

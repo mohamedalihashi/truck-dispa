@@ -12,16 +12,27 @@ export function SettingsPage() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (settings) setDraft(settings);
+    if (settings) {
+      setDraft({
+        ...settings,
+        commission: settings.commission || { driver: 80, dispatcher: 10, platform: 10 }
+      });
+    }
   }, [settings]);
 
   const save = useMutation({
     mutationFn: async () => {
       await api.updateSettings("general", draft.general || {});
       await api.updateSettings("notifications", draft.notifications || {});
+      await api.updateSettings("commission", draft.commission || {
+        driver: 80,
+        dispatcher: 10,
+        platform: 10
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["earnings"] });
       setMessage("Settings saved.");
     },
     onError: (err) => setMessage(err.message)
@@ -96,6 +107,37 @@ export function SettingsPage() {
               />
             </label>
           ))}
+        </section>
+
+        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-2">
+          <h2 className="mb-4 text-xl font-semibold text-primary-container">Commission split (%)</h2>
+          <p className="mb-4 text-sm text-on-surface-variant">
+            When a customer pays, the amount is split automatically between driver, dispatcher, and platform.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { key: "driver", label: "Driver" },
+              { key: "dispatcher", label: "Dispatcher" },
+              { key: "platform", label: "Platform (admin)" }
+            ].map(({ key, label }) => (
+              <label key={key} className="block text-sm">
+                <span className="mb-1.5 block font-medium text-on-surface-variant">{label}</span>
+                <input
+                  className="stitch-input w-full"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={draft.commission?.[key] ?? ""}
+                  onChange={(e) =>
+                    setDraft((s) => ({
+                      ...s,
+                      commission: { ...s.commission, [key]: Number(e.target.value) }
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
         </section>
       </div>
 
