@@ -10,6 +10,12 @@
   ],
   "headers": [
     {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Content-Type", "value": "application/manifest+json" }
+      ]
+    },
+    {
       "source": "/manifest.json",
       "headers": [
         { "key": "Content-Type", "value": "application/manifest+json" }

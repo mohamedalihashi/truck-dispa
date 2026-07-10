@@ -21,6 +21,10 @@ export function canShowInstallPrompt() {
   return !isStandalone();
 }
 
+export function isSecureContext() {
+  return window.isSecureContext === true;
+}
+
 export function isPwaDismissed() {
   return localStorage.getItem(PWA_DISMISS_KEY) === "1";
 }

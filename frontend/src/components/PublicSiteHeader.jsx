@@ -13,6 +13,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
 import { IosInstallGuide } from "./IosInstallGuide";
+import { AndroidInstallGuide } from "./AndroidInstallGuide";
 import { usePwaInstall } from "../hooks/usePwaInstall";
 import { roleHome } from "../utils/helpers";
 
@@ -25,9 +26,10 @@ const LANDING_LINKS = [
 export function PublicSiteHeader({ variant = "landing", className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [androidGuideOpen, setAndroidGuideOpen] = useState(false);
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const { standalone, showIosGuide, showAndroidInstall, install } = usePwaInstall();
+  const { standalone, showIosGuide, showAndroidInstall, canNativeInstall, install } = usePwaInstall();
 
   function closeMenu() {
     setMenuOpen(false);
@@ -48,7 +50,11 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
       setInstallGuideOpen(true);
       return;
     }
-    if (showAndroidInstall) await install();
+    if (canNativeInstall) {
+      await install();
+      return;
+    }
+    if (showAndroidInstall) setAndroidGuideOpen(true);
   }
 
   const showInstallItem = !standalone;
@@ -220,6 +226,7 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
       </aside>
 
       <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />
+      <AndroidInstallGuide open={androidGuideOpen} onClose={() => setAndroidGuideOpen(false)} />
     </>
   );
 }

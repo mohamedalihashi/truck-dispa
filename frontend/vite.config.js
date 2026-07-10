@@ -9,9 +9,16 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "apple-touch-icon.png", "pwa-192x192.png", "pwa-512x512.png"],
-      manifestFilename: "manifest.json",
+      includeAssets: [
+        "favicon.svg",
+        "apple-touch-icon.png",
+        "pwa-192x192.png",
+        "pwa-512x512.png",
+        "pwa-maskable-512x512.png"
+      ],
+      manifestFilename: "manifest.webmanifest",
       manifest: {
+        id: "/",
         name: "TruckDispatch Marketplace",
         short_name: "TruckDispatch",
         description:
@@ -25,23 +32,19 @@ export default defineConfig({
         categories: ["business", "transportation"],
         icons: [
           {
-            src: "apple-touch-icon.png",
-            sizes: "180x180",
+            src: "pwa-192x192.png",
+            sizes: "192x192",
             type: "image/png",
             purpose: "any"
           },
           {
-            src: "pwa-192x192.png",
-            sizes: "192x192",
-            type: "image/png"
-          },
-          {
             src: "pwa-512x512.png",
             sizes: "512x512",
-            type: "image/png"
+            type: "image/png",
+            purpose: "any"
           },
           {
-            src: "pwa-512x512.png",
+            src: "pwa-maskable-512x512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
@@ -78,7 +81,8 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: false
+        enabled: true,
+        type: "module"
       }
     })
   ],

@@ -1,21 +1,29 @@
 import { useState } from "react";
 import { Download, Share, X } from "lucide-react";
+import { AndroidInstallGuide } from "./AndroidInstallGuide";
 import { IosInstallGuide } from "./IosInstallGuide";
 import { usePwaInstall } from "../hooks/usePwaInstall";
-import { isInAppBrowser } from "../utils/pwa";
+import { isInAppBrowser, isSecureContext } from "../utils/pwa";
 
 export function InstallPwaBanner() {
-  const { canPrompt, showIosGuide, showAndroidInstall, dismiss, install } = usePwaInstall();
+  const { canPrompt, showIosGuide, showAndroidInstall, canNativeInstall, dismiss, install } = usePwaInstall();
   const [guideOpen, setGuideOpen] = useState(false);
+  const [androidGuideOpen, setAndroidGuideOpen] = useState(false);
 
   if (!canPrompt || (!showIosGuide && !showAndroidInstall)) return null;
+
+  const insecure = !isSecureContext();
 
   async function onInstall() {
     if (showIosGuide) {
       setGuideOpen(true);
       return;
     }
-    await install();
+    if (canNativeInstall) {
+      await install();
+      return;
+    }
+    setAndroidGuideOpen(true);
   }
 
   return (
@@ -28,11 +36,13 @@ export function InstallPwaBanner() {
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-on-surface">Ku rakib TruckDispatch</p>
             <p className="mt-1 text-sm text-on-surface-variant">
-              {showIosGuide
+              {insecure
+                ? "PWA waxay u baahan tahay HTTPS (link-ka production). HTTP ma ogola install."
+                : showIosGuide
                 ? isInAppBrowser()
                   ? "Fur Safari, kadib Share → Add to Home Screen si aad ugu rakibto app-ka."
                   : "Taabo Share, kadib dooro Add to Home Screen si aad ugu hesho app-ka shaashadda guriga."
-                : "Add this app to your home screen for faster access — no app store required."}
+                : "Ku rakib shaashadda guriga si aad si dhakhso ah ugu gasho — app store looma baahna."}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -63,6 +73,7 @@ export function InstallPwaBanner() {
         </div>
       </div>
       <IosInstallGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <AndroidInstallGuide open={androidGuideOpen} onClose={() => setAndroidGuideOpen(false)} />
     </>
   );
 }

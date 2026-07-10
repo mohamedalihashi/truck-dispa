@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { IosInstallGuide } from "../components/IosInstallGuide";
+import { AndroidInstallGuide } from "../components/AndroidInstallGuide";
 import { usePwaInstall } from "../hooks/usePwaInstall";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
@@ -57,9 +58,10 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const [androidGuideOpen, setAndroidGuideOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const { standalone, showIosGuide, showAndroidInstall, install } = usePwaInstall();
+  const { standalone, showIosGuide, showAndroidInstall, canNativeInstall, install } = usePwaInstall();
   useRealtimeInvalidation();
 
   useEffect(() => {
@@ -89,7 +91,11 @@ export function DashboardLayout() {
       setInstallGuideOpen(true);
       return;
     }
-    if (showAndroidInstall) await install();
+    if (canNativeInstall) {
+      await install();
+      return;
+    }
+    if (showAndroidInstall) setAndroidGuideOpen(true);
   }
 
   return (
@@ -290,6 +296,7 @@ export function DashboardLayout() {
       </main>
 
       <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />
+      <AndroidInstallGuide open={androidGuideOpen} onClose={() => setAndroidGuideOpen(false)} />
     </div>
   );
 }

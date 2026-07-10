@@ -15,7 +15,8 @@ export function usePwaInstall() {
   const ios = isIos();
   const canPrompt = canShowInstallPrompt() && !dismissed;
   const showIosGuide = ios && canPrompt;
-  const showAndroidInstall = !ios && Boolean(deferredPrompt) && canPrompt;
+  const showAndroidInstall = !ios && canPrompt;
+  const canNativeInstall = Boolean(deferredPrompt);
 
   useEffect(() => {
     if (standalone || dismissed || ios) return;
@@ -50,6 +51,7 @@ export function usePwaInstall() {
     canPrompt,
     showIosGuide,
     showAndroidInstall,
+    canNativeInstall,
     dismiss,
     install
   };

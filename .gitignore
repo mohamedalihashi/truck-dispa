@@ -1,5 +1,6 @@
 node_modules/
 dist/
+frontend/dev-dist/
 .env
 .vercel/
 backend/uploads/*
