@@ -42,12 +42,23 @@ router.get("/", async (req, res, next) => {
   try {
     const filters = {
       status: req.query.status,
+      search: req.query.search,
       page: req.query.page,
       limit: req.query.limit
     };
     if (req.user.role === "customer") filters.customerId = req.user.sub;
     const result = await db.listCargoRequests(filters);
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/summary", async (req, res, next) => {
+  try {
+    const filters = {};
+    if (req.user.role === "customer") filters.customerId = req.user.sub;
+    res.json(await db.cargoRequestSummary(filters));
   } catch (error) {
     next(error);
   }

@@ -94,6 +94,7 @@ model User {
   passwordHash String   @map("password_hash")
   role         UserRole
   phone        String?
+  avatarUrl    String?  @map("avatar_url")
   status       String   @default("Active")
   mustChangePassword Boolean @default(false) @map("must_change_password")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -132,6 +133,8 @@ model Truck {
   plateNumber String      @unique @map("plate_number")
   capacity    String
   truckType   String      @map("truck_type")
+  photoUrl1   String?     @map("photo_url_1")
+  photoUrl2   String?     @map("photo_url_2")
   driverId    String      @unique @map("driver_id") @db.Uuid
   status      TruckStatus @default(Available)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()

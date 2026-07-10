@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Eye, FileText, Hourglass, Pencil, Plus, Trash2, Truck, XCircle } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { StatusBadge } from "../../components/ui/StatusBadge";
+import { MetricCard } from "../../components/ui/MetricCard";
 import {
   useAssignCargo,
   useCancelCargo,
+  useCargoRequestSummary,
   useCargoRequests,
   useCreateCargo,
   useCustomers,
@@ -16,6 +18,7 @@ import {
   useTrucks,
   useUpdateCargo
 } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { useAuth } from "../../contexts/AuthContext";
 import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES, money } from "../../utils/helpers";
 
@@ -29,8 +32,10 @@ export function RequestsPage() {
   const [truckId, setTruckId] = useState("");
   const [error, setError] = useState("");
   const { user } = useAuth();
+  const { search } = useDashboardSearch();
   const showCreate = user.role === "admin" || user.role === "dispatcher";
-  const { data, isLoading } = useCargoRequests({ status: status || undefined });
+  const { data, isLoading } = useCargoRequests({ status: status || undefined, search: search || undefined });
+  const { data: summary } = useCargoRequestSummary();
   const { data: trucks } = useTrucks();
   const { data: customers } = useCustomers({ enabled: showCreate });
   const assign = useAssignCargo();
@@ -185,6 +190,15 @@ export function RequestsPage() {
           ) : null
         }
       />
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <MetricCard icon={FileText} label="Total Requests" value={summary?.total ?? "—"} tone="navy" />
+        <MetricCard icon={Clock} label="Total Pending" value={summary?.pending ?? "—"} tone="amber" />
+        <MetricCard icon={Truck} label="Total Active" value={summary?.active ?? "—"} tone="blue" />
+        <MetricCard icon={Hourglass} label="Awaiting Approval" value={summary?.awaitingApproval ?? "—"} tone="orange" />
+        <MetricCard icon={CheckCircle2} label="Total Received" value={summary?.delivered ?? "—"} tone="green" />
+        <MetricCard icon={XCircle} label="Total Cancelled" value={summary?.cancelled ?? "—"} tone="soft" />
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <select

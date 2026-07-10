@@ -10,6 +10,7 @@ import { Modal } from "../../components/ui/Modal";
 import { TripFeedbackForm } from "../../components/TripFeedbackForm";
 import { resolveUploadUrl } from "../../config/api.js";
 import { useCancelCargo, useCargoRequests, useQuoteMutations, useTrips, useUpdateCargo } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES } from "../../utils/helpers";
@@ -17,6 +18,7 @@ import { QuoteReviewPanel } from "../../components/QuoteReviewPanel";
 
 export function ShipmentsPage() {
   const location = useLocation();
+  const { search } = useDashboardSearch();
   const [statusFilter, setStatusFilter] = useState("");
   const [viewingRequest, setViewingRequest] = useState(null);
   const [viewingTrip, setViewingTrip] = useState(null);
@@ -24,9 +26,10 @@ export function ShipmentsPage() {
   const [error, setError] = useState("");
   const [quoteError, setQuoteError] = useState("");
 
-  const { data: trips, isLoading: tripsLoading } = useTrips();
+  const { data: trips, isLoading: tripsLoading } = useTrips({ search: search || undefined });
   const { data: requests, isLoading: requestsLoading } = useCargoRequests({
-    status: statusFilter || undefined
+    status: statusFilter || undefined,
+    search: search || undefined
   });
   const updateCargo = useUpdateCargo();
   const cancelCargo = useCancelCargo();

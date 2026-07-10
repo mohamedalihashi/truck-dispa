@@ -182,7 +182,7 @@ export function PaymentsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard icon={Wallet} label="Total collected" value={`${money(totalCollected)} ${currency}`} tone="green" />
         <MetricCard icon={DollarSign} label="Outstanding" value={`${money(totalOutstanding)} ${currency}`} tone="navy" />
         <MetricCard icon={CreditCard} label="Transactions" value={rows.length} tone="orange" />

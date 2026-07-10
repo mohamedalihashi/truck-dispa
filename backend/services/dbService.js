@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { prisma } from "../lib/prisma.js";
+import { prisma, withTransaction } from "../lib/prisma.js";
 import { ADMIN, DEMO_PASSWORD } from "../config/seed.js";
 import {
   buildWaafiAttemptReference,
@@ -27,6 +27,7 @@ function mapUser(row) {
     email: row.email,
     role: row.role,
     phone: row.phone,
+    avatarUrl: row.avatarUrl || null,
     status: row.status,
     mustChangePassword: Boolean(row.mustChangePassword),
     createdAt: row.createdAt,
@@ -50,6 +51,8 @@ function mapTruck(row) {
     driverId: row.driverId,
     driver: row.driver?.name || null,
     status: row.status,
+    photoUrl1: row.photoUrl1 || null,
+    photoUrl2: row.photoUrl2 || null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -210,17 +213,39 @@ export { prisma } from "../lib/prisma.js";
 
 export const db = {
   async ensureAdmin() {
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: ADMIN.email, mode: "insensitive" } },
+      select: { id: true, role: true, status: true, name: true, phone: true },
+    });
+
+    if (existing) {
+      const needsUpdate =
+        existing.role !== ADMIN.role ||
+        existing.status !== "Active" ||
+        existing.name !== ADMIN.name ||
+        existing.phone !== ADMIN.phone;
+
+      if (needsUpdate) {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            role: ADMIN.role,
+            status: "Active",
+            name: ADMIN.name,
+            phone: ADMIN.phone,
+          },
+        });
+      }
+
+      return { password: DEMO_PASSWORD, email: ADMIN.email };
+    }
+
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
-    await prisma.user.upsert({
-      where: { email: ADMIN.email },
-      update: {
+    await prisma.user.create({
+      data: {
+        ...ADMIN,
         passwordHash,
-        status: "Active",
-        role: ADMIN.role,
-        name: ADMIN.name,
-        phone: ADMIN.phone,
       },
-      create: { ...ADMIN, passwordHash },
     });
     return { password: DEMO_PASSWORD, email: ADMIN.email };
   },
@@ -263,6 +288,7 @@ export const db = {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
       ];
     }
     const offset = (Number(page) - 1) * Number(limit);
@@ -279,9 +305,24 @@ export const db = {
     return { data: data.map(mapUser), total, page: Number(page) };
   },
 
+  async userSummary() {
+    const [total, active, inactive, customers, dispatchers, drivers, driverActive, trucks] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { status: "Active" } }),
+      prisma.user.count({ where: { status: "Inactive" } }),
+      prisma.user.count({ where: { role: "customer" } }),
+      prisma.user.count({ where: { role: "dispatcher" } }),
+      prisma.user.count({ where: { role: "driver" } }),
+      prisma.user.count({ where: { role: "driver", status: "Active" } }),
+      prisma.truck.count(),
+    ]);
+
+    return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
+  },
+
   async createUser({ name, email, password, role, phone, truck, mustChangePassword = false, actorId = null }) {
-    return prisma.$transaction(async (tx) => {
-      const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 10);
+    return withTransaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name,
@@ -300,12 +341,19 @@ export const db = {
           error.status = 400;
           throw error;
         }
+        if (!truck?.photoUrl1 || !truck?.photoUrl2) {
+          const error = new Error("Driver registration requires two truck photos");
+          error.status = 400;
+          throw error;
+        }
         truckRow = await tx.truck.create({
           data: {
             truckNumber: truck.truckNumber,
             plateNumber: truck.plateNumber,
             capacity: truck.capacity,
             truckType: truck.truckType,
+            photoUrl1: truck.photoUrl1,
+            photoUrl2: truck.photoUrl2,
             driverId: user.id,
             status: "Available",
           },
@@ -331,6 +379,7 @@ export const db = {
     if (payload.name !== undefined) data.name = payload.name;
     if (payload.email !== undefined) data.email = payload.email;
     if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.avatarUrl !== undefined) data.avatarUrl = payload.avatarUrl;
     if (payload.status !== undefined) data.status = payload.status;
     if (payload.role !== undefined) data.role = payload.role;
     if (payload.password) {
@@ -345,7 +394,7 @@ export const db = {
   },
 
   async deleteUser(id) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       await tx.auditLog.updateMany({
         where: { actorId: id },
         data: { actorId: null },
@@ -357,9 +406,17 @@ export const db = {
 
   // ── Trucks ───────────────────────────────────────────────────────
 
-  async listTrucks({ status, page = 1, limit = 50 } = {}) {
+  async listTrucks({ status, search, page = 1, limit = 50 } = {}) {
     const where = {};
     if (status) where.status = status;
+    if (search) {
+      where.OR = [
+        { truckNumber: { contains: search, mode: "insensitive" } },
+        { plateNumber: { contains: search, mode: "insensitive" } },
+        { truckType: { contains: search, mode: "insensitive" } },
+        { driver: { name: { contains: search, mode: "insensitive" } } },
+      ];
+    }
     const offset = (Number(page) - 1) * Number(limit);
     const [data, total] = await Promise.all([
       prisma.truck.findMany({
@@ -372,6 +429,18 @@ export const db = {
       prisma.truck.count({ where }),
     ]);
     return { data: data.map(mapTruck), total, page: Number(page) };
+  },
+
+  async truckSummary() {
+    const [total, active, busy, maintenance, inactive] = await Promise.all([
+      prisma.truck.count(),
+      prisma.truck.count({ where: { status: "Available" } }),
+      prisma.truck.count({ where: { status: "Busy" } }),
+      prisma.truck.count({ where: { status: "Maintenance" } }),
+      prisma.truck.count({ where: { driver: { status: "Inactive" } } }),
+    ]);
+
+    return { total, active, inactive, busy, maintenance };
   },
 
   async createTruck(payload) {
@@ -390,7 +459,7 @@ export const db = {
   },
 
   async deleteTruck(id) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const truck = await tx.truck.findUnique({ where: { id } });
       if (!truck) return false;
 
@@ -449,10 +518,20 @@ export const db = {
 
   // ── Cargo Requests ───────────────────────────────────────────────
 
-  async listCargoRequests({ status, customerId, page = 1, limit = 20 } = {}) {
+  async listCargoRequests({ status, customerId, search, page = 1, limit = 20 } = {}) {
     const where = {};
     if (status) where.status = reqStatusToDb(status);
     if (customerId) where.customerId = customerId;
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: "insensitive" } },
+        { pickup: { contains: search, mode: "insensitive" } },
+        { destination: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { customer: { name: { contains: search, mode: "insensitive" } } },
+        { driver: { name: { contains: search, mode: "insensitive" } } },
+      ];
+    }
     const offset = (Number(page) - 1) * Number(limit);
     const [data, total] = await Promise.all([
       prisma.cargoRequest.findMany({
@@ -467,10 +546,28 @@ export const db = {
     return { data: data.map(mapCargoRequest), total, page: Number(page) };
   },
 
+  async cargoRequestSummary({ customerId } = {}) {
+    const where = {};
+    if (customerId) where.customerId = customerId;
+
+    const activeStatuses = ["Approved", "Assigned", "Accepted", "Arrived_Pickup", "Loaded", "In_Transit"];
+
+    const [total, pending, active, awaitingApproval, delivered, cancelled] = await Promise.all([
+      prisma.cargoRequest.count({ where }),
+      prisma.cargoRequest.count({ where: { ...where, status: "Pending" } }),
+      prisma.cargoRequest.count({ where: { ...where, status: { in: activeStatuses } } }),
+      prisma.cargoRequest.count({ where: { ...where, status: "Awaiting_Approval" } }),
+      prisma.cargoRequest.count({ where: { ...where, status: "Delivered" } }),
+      prisma.cargoRequest.count({ where: { ...where, status: "Cancelled" } }),
+    ]);
+
+    return { total, pending, active, awaitingApproval, delivered, cancelled };
+  },
+
   async createCargoRequest(payload) {
     const id = `REQ-${Math.floor(9000 + Math.random() * 1000)}`;
 
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       await tx.cargoRequest.create({
         data: {
           id,
@@ -557,7 +654,7 @@ export const db = {
   },
 
   async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, dispatcherId }) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
 
@@ -616,7 +713,7 @@ export const db = {
   },
 
   async acceptCargoQuote(id, { customerId }) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
 
@@ -667,7 +764,7 @@ export const db = {
   },
 
   async rejectCargoQuote(id, { customerId, note }) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
 
@@ -710,7 +807,7 @@ export const db = {
   },
 
   async assignCargoRequest(id, { driverId, truckId, dispatcherId }) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const truckCheck = await tx.truck.findFirst({
         where: { id: truckId, driverId },
       });
@@ -834,7 +931,7 @@ export const db = {
   },
 
   async cancelCargoRequest(id, actorId, { customerId } = {}) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
 
@@ -904,11 +1001,22 @@ export const db = {
 
   // ── Trips ────────────────────────────────────────────────────────
 
-  async listTrips({ status, driverId, customerId, page = 1, limit = 50 } = {}) {
+  async listTrips({ status, driverId, customerId, search, page = 1, limit = 50 } = {}) {
     const where = {};
     if (status) where.status = tripStatusToDb(status);
     if (driverId) where.driverId = driverId;
     if (customerId) where.customerId = customerId;
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: "insensitive" } },
+        { pickup: { contains: search, mode: "insensitive" } },
+        { destination: { contains: search, mode: "insensitive" } },
+        { customer: { name: { contains: search, mode: "insensitive" } } },
+        { driver: { name: { contains: search, mode: "insensitive" } } },
+        { truck: { truckNumber: { contains: search, mode: "insensitive" } } },
+        { truck: { plateNumber: { contains: search, mode: "insensitive" } } },
+      ];
+    }
     const offset = (Number(page) - 1) * Number(limit);
     const [data, total] = await Promise.all([
       prisma.trip.findMany({
@@ -923,6 +1031,24 @@ export const db = {
     return { data: data.map(mapTrip), total, page: Number(page) };
   },
 
+  async tripSummary({ driverId, customerId } = {}) {
+    const where = {};
+    if (driverId) where.driverId = driverId;
+    if (customerId) where.customerId = customerId;
+
+    const activeStatuses = ["Assigned", "Accepted", "Arrived_Pickup", "Loaded", "In_Transit", "Delayed"];
+
+    const [total, active, pending, cancelled, delivered] = await Promise.all([
+      prisma.trip.count({ where }),
+      prisma.trip.count({ where: { ...where, status: { in: activeStatuses } } }),
+      prisma.trip.count({ where: { ...where, status: "Pending" } }),
+      prisma.trip.count({ where: { ...where, status: "Cancelled" } }),
+      prisma.trip.count({ where: { ...where, status: "Delivered" } }),
+    ]);
+
+    return { total, active, pending, cancelled, delivered };
+  },
+
   async updateTripStatus(id, status, actorId, { driverId } = {}) {
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing) return null;
@@ -934,7 +1060,7 @@ export const db = {
 
     const dbStatus = tripStatusToDb(status);
 
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const trip = await tx.trip.update({
         where: { id },
         data: { status: dbStatus },
@@ -1087,7 +1213,7 @@ export const db = {
       throw error;
     }
 
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const feedback = await tx.tripFeedback.create({
         data: {
           tripId,
@@ -1165,7 +1291,7 @@ export const db = {
   },
 
   async rejectTrip(id, driverId) {
-    return prisma.$transaction(async (tx) => {
+    return withTransaction(async (tx) => {
       const trip = await tx.trip.findFirst({
         where: { id, driverId },
       });
@@ -1890,28 +2016,27 @@ export const db = {
     const normalizedEmail = email.toLowerCase().trim();
     const now = new Date();
 
-    return prisma.$transaction(async (tx) => {
-      const row = await tx.verificationCode.findFirst({
-        where: {
-          email: normalizedEmail,
-          code,
-          purpose,
-          usedAt: null,
-          expiresAt: { gt: now },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, payload: true },
-      });
-      if (!row) return null;
-
-      await tx.verificationCode.update({
-        where: { id: row.id },
-        data: { usedAt: now },
-      });
-
-      if (!row.payload) return { __verified: true };
-      return row.payload;
+    const row = await prisma.verificationCode.findFirst({
+      where: {
+        email: normalizedEmail,
+        code,
+        purpose,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, payload: true },
     });
+    if (!row) return null;
+
+    const { count } = await prisma.verificationCode.updateMany({
+      where: { id: row.id, usedAt: null, expiresAt: { gt: now } },
+      data: { usedAt: now },
+    });
+    if (count === 0) return null;
+
+    if (!row.payload) return { __verified: true };
+    return row.payload;
   },
 
   async getPendingVerificationPayload(email, purpose) {
@@ -1927,6 +2052,21 @@ export const db = {
     });
     if (!row?.payload) return null;
     return row.payload;
+  },
+
+  async getLatestRegisterPayload(email) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const rows = await prisma.verificationCode.findMany({
+      where: {
+        email: normalizedEmail,
+        purpose: "register",
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { payload: true },
+    });
+    const row = rows.find((entry) => entry.payload);
+    return row?.payload || null;
   },
 
   // ── Audit Logs ───────────────────────────────────────────────────

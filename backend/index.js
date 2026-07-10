@@ -41,20 +41,22 @@ try {
   process.exit(1);
 }
 
-try {
-  const seedResult = await db.seedIfEmpty();
-  if (seedResult.seeded) {
-    console.log(`PostgreSQL seeded. Demo password: ${seedResult.demoPassword}`);
-  }
-  const admin = await db.ensureAdmin();
-  console.log(`Admin account ready: ${admin.email} (password: ${admin.password})`);
-} catch (error) {
-  console.warn("Database seed skipped:", error.message);
-}
-
 server.listen(port, () => {
   console.log(`TruckDispatch API running on http://127.0.0.1:${port}`);
 });
+
+void (async () => {
+  try {
+    const seedResult = await db.seedIfEmpty();
+    if (seedResult.seeded) {
+      console.log(`PostgreSQL seeded. Demo password: ${seedResult.demoPassword}`);
+    }
+    const admin = await db.ensureAdmin();
+    console.log(`Admin account ready: ${admin.email} (password: ${admin.password})`);
+  } catch (error) {
+    console.warn("Database seed skipped:", error.message);
+  }
+})();
 
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {

@@ -13,6 +13,7 @@ export function ForgotPasswordPage() {
   const [devCode, setDevCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [resending, setResending] = useState(false);
   const {
     register,
     handleSubmit,
@@ -47,6 +48,26 @@ export function ForgotPasswordPage() {
       setStep("done");
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function onResend() {
+    if (!pendingEmail) {
+      setError("Enter your email first.");
+      return;
+    }
+    setError("");
+    setMessage("");
+    setResending(true);
+    try {
+      const result = await api.resendCode({ email: pendingEmail, purpose: "reset" });
+      setMessage(result.message || "A new reset code was sent.");
+      setDevCode(result.devCode || "");
+      setValue("code", result.devCode || "");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -114,6 +135,16 @@ export function ForgotPasswordPage() {
               <Button className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? "Resetting…" : "Reset password"}
               </Button>
+              <div className="text-right text-sm">
+                <button
+                  type="button"
+                  className="font-semibold text-secondary-container hover:underline disabled:opacity-60"
+                  onClick={onResend}
+                  disabled={resending}
+                >
+                  {resending ? "Sending…" : "Resend code"}
+                </button>
+              </div>
             </form>
           ) : (
             <div className="mt-6 space-y-4">

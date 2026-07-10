@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Mail, Phone, Shield, Truck, User } from "lucide-react";
+import { Camera, Mail, Phone, Shield, Truck, User } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../contexts/AuthContext";
 import { useProfileUpdate, useTrucks } from "../../hooks/useApi";
+import { api } from "../../services/api";
+import { resolveUploadUrl } from "../../config/api.js";
 import { roleHome } from "../../utils/helpers";
 
 const roleLabels = {
@@ -20,15 +22,18 @@ export function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const { data: trucks } = useTrucks();
   const updateProfile = useProfileUpdate();
+  const avatarInputRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", password: "" });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const base = roleHome(user.role);
   const truck =
     user.role === "driver"
       ? (trucks?.data || []).find((item) => item.driverId === user.id)
       : null;
+  const avatarSrc = user.avatarUrl ? resolveUploadUrl(user.avatarUrl) : null;
 
   function openEdit() {
     setForm({ name: user.name || "", phone: user.phone || "", password: "" });
@@ -51,6 +56,25 @@ export function ProfilePage() {
     }
   }
 
+  async function onAvatarChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const result = await api.uploadAvatar(formData);
+      await refreshUser();
+      setMessage(result.message || "Profile photo updated.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -68,13 +92,47 @@ export function ProfilePage() {
           {message}
         </p>
       )}
+      {error && !open && (
+        <p className="rounded-xl border border-error-container bg-error-container/30 px-4 py-3 text-sm text-on-error-container">
+          {error}
+        </p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-12">
         <section className="rounded-xl border border-outline-variant bg-primary-container p-6 text-white shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-4">
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border-4 border-secondary-container bg-surface-tint text-3xl font-bold">
-            {user.name?.charAt(0) || "U"}
+          <div className="relative mb-6 inline-block">
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt={user.name}
+                className="h-20 w-20 rounded-full border-4 border-secondary-container object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-secondary-container bg-surface-tint text-3xl font-bold">
+                {user.name?.charAt(0) || "U"}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-secondary-container text-white shadow-md hover:opacity-90 disabled:opacity-60"
+              title="Change profile photo"
+            >
+              <Camera size={14} />
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onAvatarChange}
+            />
           </div>
-          <h2 className="text-2xl font-bold">{user.name}</h2>
+          <p className="text-xs text-on-primary-container">
+            {uploadingAvatar ? "Uploading photo…" : "Tap camera icon to change your photo"}
+          </p>
+          <h2 className="mt-4 text-2xl font-bold">{user.name}</h2>
           <p className="mt-1 text-sm text-on-primary-container">{roleLabels[user.role]}</p>
           <div className="mt-6 space-y-3 text-sm text-on-primary-container">
             <p className="flex items-center gap-2">
@@ -112,6 +170,24 @@ export function ProfilePage() {
                 <Info label="Type" value={truck.type || truck.truckType} />
                 <Info label="Status" value={<StatusBadge status={truck.status} />} />
               </dl>
+              {(truck.photoUrl1 || truck.photoUrl2) && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {truck.photoUrl1 ? (
+                    <img
+                      src={resolveUploadUrl(truck.photoUrl1)}
+                      alt="Truck photo 1"
+                      className="h-32 w-full rounded-lg object-cover"
+                    />
+                  ) : null}
+                  {truck.photoUrl2 ? (
+                    <img
+                      src={resolveUploadUrl(truck.photoUrl2)}
+                      alt="Truck photo 2"
+                      className="h-32 w-full rounded-lg object-cover"
+                    />
+                  ) : null}
+                </div>
+              )}
               {user.role === "driver" && (
                 <Link
                   to={`${base}/truck`}

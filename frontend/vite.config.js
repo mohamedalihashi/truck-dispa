@@ -22,7 +22,7 @@ export default defineConfig({
         orientation: "portrait-primary",
         scope: "/",
         start_url: "/",
-        categories: ["business", "logistics", "transportation"],
+        categories: ["business", "transportation"],
         icons: [
           {
             src: "apple-touch-icon.png",

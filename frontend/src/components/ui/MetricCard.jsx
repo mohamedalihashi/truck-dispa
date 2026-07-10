@@ -5,21 +5,24 @@ export function MetricCard({ icon: Icon, label, value, hint, tone = "orange" }) 
     blue: "bg-tertiary-container/10 text-on-tertiary-container",
     navy: "bg-surface-tint/10 text-surface-tint",
     green: "bg-secondary-container/10 text-secondary-container",
-    soft: "bg-secondary-fixed text-on-secondary-fixed"
+    soft: "bg-secondary-fixed text-on-secondary-fixed",
+    warn: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
   };
 
   return (
-    <article className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] transition hover:shadow-[0px_8px_24px_rgba(0,0,0,0.1)]">
-      <div className="mb-4 flex items-start justify-between">
-        <div className={`rounded-lg p-2 ${tones[tone] || tones.orange}`}>
-          <Icon size={22} />
-        </div>
-        {hint && (
-          <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">{hint}</span>
-        )}
+    <article className="flex items-center gap-3 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3.5 py-3 shadow-sm transition hover:shadow-md">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone] || tones.orange}`}>
+        <Icon size={18} />
       </div>
-      <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-on-surface-variant">{label}</h3>
-      <p className="text-[32px] font-bold leading-10 text-on-surface">{value}</p>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-[11px] font-medium uppercase tracking-wide text-on-surface-variant">{label}</h3>
+        <p className="text-xl font-bold leading-tight text-on-surface">{value}</p>
+      </div>
+      {hint ? (
+        <span className="hidden shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 sm:inline dark:bg-emerald-950/50 dark:text-emerald-300">
+          {hint}
+        </span>
+      ) : null}
     </article>
   );
 }

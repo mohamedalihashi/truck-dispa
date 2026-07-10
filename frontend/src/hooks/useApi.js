@@ -16,10 +16,26 @@ export function useCargoRequests(params = {}) {
   });
 }
 
+export function useCargoRequestSummary(options = {}) {
+  return useQuery({
+    queryKey: ["cargo-requests-summary"],
+    queryFn: () => api.cargoRequestSummary(),
+    ...options
+  });
+}
+
 export function useTrips(params = {}, options = {}) {
   return useQuery({
     queryKey: ["trips", params],
     queryFn: () => api.listTrips(params),
+    ...options
+  });
+}
+
+export function useTripSummary(options = {}) {
+  return useQuery({
+    queryKey: ["trips-summary"],
+    queryFn: () => api.tripSummary(),
     ...options
   });
 }
@@ -39,6 +55,14 @@ export function useTrucks(params = {}) {
   });
 }
 
+export function useTruckSummary(options = {}) {
+  return useQuery({
+    queryKey: ["trucks-summary"],
+    queryFn: () => api.truckSummary(),
+    ...options
+  });
+}
+
 export function useNotifications() {
   return useQuery({
     queryKey: ["notifications"],
@@ -50,6 +74,14 @@ export function useUsers(params = {}, options = {}) {
   return useQuery({
     queryKey: ["users", params],
     queryFn: () => api.listUsers(params),
+    ...options
+  });
+}
+
+export function useUserSummary(options = {}) {
+  return useQuery({
+    queryKey: ["users-summary"],
+    queryFn: () => api.userSummary(),
     ...options
   });
 }
@@ -102,6 +134,7 @@ export function useRealtimeInvalidation() {
   useEffect(() => {
     if (!events[0]) return;
     qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
     qc.invalidateQueries({ queryKey: ["trips"] });
     qc.invalidateQueries({ queryKey: ["trucks"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
@@ -118,6 +151,7 @@ export function useRealtimeInvalidation() {
 
     const invalidateAll = () => {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
@@ -139,6 +173,7 @@ export function useCreateCargo() {
     mutationFn: (payload) => api.createCargoRequest(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     }
   });
@@ -150,6 +185,7 @@ export function useUpdateCargo() {
     mutationFn: ({ id, payload }) => api.updateCargoRequest(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     }
   });
@@ -157,18 +193,24 @@ export function useUpdateCargo() {
 
 export function useUserMutations() {
   const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["users"] });
+    qc.invalidateQueries({ queryKey: ["users-summary"] });
+    qc.invalidateQueries({ queryKey: ["trucks-summary"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
   return {
     create: useMutation({
       mutationFn: (payload) => api.createUser(payload),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] })
+      onSuccess: invalidate
     }),
     update: useMutation({
       mutationFn: ({ id, payload }) => api.updateUser(id, payload),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] })
+      onSuccess: invalidate
     }),
     remove: useMutation({
       mutationFn: (id) => api.deleteUser(id),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] })
+      onSuccess: invalidate
     })
   };
 }
@@ -177,7 +219,9 @@ export function useTruckMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["trucks"] });
+    qc.invalidateQueries({ queryKey: ["trucks-summary"] });
     qc.invalidateQueries({ queryKey: ["users"] });
+    qc.invalidateQueries({ queryKey: ["users-summary"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
   };
   return {
@@ -289,6 +333,7 @@ export function useCancelCargo() {
     mutationFn: (id) => api.cancelCargoRequest(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -302,6 +347,7 @@ export function useAssignCargo() {
     mutationFn: ({ id, payload }) => api.assignCargoRequest(id, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -314,6 +360,7 @@ export function useQuoteMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
   };
@@ -337,7 +384,9 @@ export function useTripActions() {
   const qc = useQueryClient();
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["trips"] });
+    qc.invalidateQueries({ queryKey: ["trips-summary"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+    qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
     qc.invalidateQueries({ queryKey: ["trucks"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
   };

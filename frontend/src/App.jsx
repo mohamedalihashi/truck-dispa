@@ -72,7 +72,7 @@ export default function App() {
           <Route index element={<DispatcherDashboard />} />
           <Route path="requests" element={<RequestsPage />} />
           <Route path="trips" element={<TripsPage />} />
-          <Route path="trucks" element={<TrucksPage />} />
+          <Route path="drivers" element={<UsersPage />} />
           <Route path="tracking" element={<TrackingPage />} />
           <Route path="earnings" element={<EarningsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />

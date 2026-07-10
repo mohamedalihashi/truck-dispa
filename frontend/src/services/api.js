@@ -18,7 +18,21 @@ apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
     const data = error.response?.data;
-    const message = data?.message || error.message || "Request failed";
+    const status = error.response?.status;
+    let message = data?.message;
+
+    if (!message) {
+      if (!error.response) {
+        message = "Cannot reach the server. Start the app with npm run dev and try again.";
+      } else if (status === 503) {
+        message = data?.message || "Database is busy. Please wait a moment and try again.";
+      } else if (status === 500) {
+        message = "Server error. Wait a few seconds and try again.";
+      } else {
+        message = error.message || "Request failed";
+      }
+    }
+
     const err = new Error(message);
     if (data?.details) err.details = data.details;
     return Promise.reject(err);
@@ -35,21 +49,35 @@ export const api = {
   changePassword: (payload) => apiClient.post("/auth/change-password", payload),
   me: () => apiClient.get("/auth/me"),
   updateProfile: (payload) => apiClient.patch("/auth/me", payload),
+  uploadAvatar: (formData) =>
+    apiClient.post("/auth/me/avatar", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    }),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }),
   resetPassword: (payload) => apiClient.post("/auth/reset-password", payload),
   listUsers: (params = {}) => apiClient.get("/users", { params }),
-  createUser: (payload) => apiClient.post("/users", payload),
+  userSummary: () => apiClient.get("/users/summary"),
+  createUser: (payload) => {
+    if (payload instanceof FormData) {
+      return apiClient.post("/users", payload, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+    }
+    return apiClient.post("/users", payload);
+  },
   updateUser: (id, payload) => apiClient.patch(`/users/${id}`, payload),
   deleteUser: (id) => apiClient.delete(`/users/${id}`),
   createCargoRequest: (payload) => apiClient.post("/cargo-requests", payload),
   updateCargoRequest: (id, payload) => apiClient.patch(`/cargo-requests/${id}`, payload),
   listCargoRequests: (params = {}) => apiClient.get("/cargo-requests", { params }),
+  cargoRequestSummary: () => apiClient.get("/cargo-requests/summary"),
   assignCargoRequest: (id, payload) => apiClient.patch(`/cargo-requests/${id}/assign`, payload),
   submitCargoQuote: (id, payload) => apiClient.patch(`/cargo-requests/${id}/quote`, payload),
   acceptCargoQuote: (id) => apiClient.post(`/cargo-requests/${id}/quote/accept`),
   rejectCargoQuote: (id, payload) => apiClient.post(`/cargo-requests/${id}/quote/reject`, payload),
   cancelCargoRequest: (id) => apiClient.delete(`/cargo-requests/${id}`),
   listTrips: (params = {}) => apiClient.get("/trips", { params }),
+  tripSummary: () => apiClient.get("/trips/summary"),
   listTripFeedback: (params = {}) => apiClient.get("/trips/feedback", { params }),
   updateTripStatus: (id, status) => apiClient.patch(`/trips/${id}/status`, { status }),
   acceptTrip: (id) => apiClient.post(`/trips/${id}/accept`),
@@ -61,6 +89,7 @@ export const api = {
     }),
   submitTripFeedback: (id, payload) => apiClient.post(`/trips/${id}/feedback`, payload),
   listTrucks: (params = {}) => apiClient.get("/trucks", { params }),
+  truckSummary: () => apiClient.get("/trucks/summary"),
   createTruck: (payload) => apiClient.post("/trucks", payload),
   listTruckTypes: () => apiClient.get("/trucks/types"),
   updateTruck: (id, payload) => apiClient.patch(`/trucks/${id}`, payload),

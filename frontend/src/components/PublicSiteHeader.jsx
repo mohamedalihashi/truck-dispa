@@ -81,16 +81,6 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
             <div className="h-6 w-px bg-outline-variant" />
             <ThemeToggle />
             <div className="h-6 w-px bg-outline-variant" />
-            {showInstallItem ? (
-              <button
-                type="button"
-                onClick={onInstallClick}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-secondary"
-              >
-                <Download size={16} />
-                Install
-              </button>
-            ) : null}
             {isAuthenticated ? (
               <button
                 type="button"
@@ -178,17 +168,6 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
 
           <div className="my-3 h-px bg-outline-variant/40" />
 
-          {showInstallItem ? (
-            <button
-              type="button"
-              onClick={onInstallClick}
-              className="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-3 text-left text-sm font-semibold text-primary"
-            >
-              <Download size={18} />
-              {showIosGuide ? "Ku rakib App-ka (iOS)" : "Install App"}
-            </button>
-          ) : null}
-
           {isAuthenticated ? (
             <button
               type="button"
@@ -222,6 +201,22 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
             </>
           )}
         </nav>
+
+        {showInstallItem ? (
+          <div
+            className="mt-auto border-t border-outline-variant/40 pt-4"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <button
+              type="button"
+              onClick={onInstallClick}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-on-primary"
+            >
+              <Download size={18} />
+              {showIosGuide ? "Ku rakib App-ka (iOS)" : "Install App"}
+            </button>
+          </div>
+        ) : null}
       </aside>
 
       <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />

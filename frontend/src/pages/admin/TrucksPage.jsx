@@ -1,15 +1,19 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Truck, Wrench, XCircle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
-import { useTruckMutations, useTrucks, useDrivers } from "../../hooks/useApi";
+import { useTruckMutations, useTruckSummary, useTrucks, useDrivers } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
+import { MetricCard } from "../../components/ui/MetricCard";
 
 export function TrucksPage() {
-  const { data, isLoading } = useTrucks();
+  const { search } = useDashboardSearch();
+  const { data, isLoading } = useTrucks({ search: search || undefined });
+  const { data: summary } = useTruckSummary();
   const { data: drivers } = useDrivers();
   const mutations = useTruckMutations();
   const [open, setOpen] = useState(false);
@@ -103,6 +107,15 @@ export function TrucksPage() {
           </Button>
         }
       />
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <MetricCard icon={Truck} label="Total Trucks" value={summary?.total ?? "—"} tone="navy" />
+        <MetricCard icon={CheckCircle2} label="Total Active" value={summary?.active ?? "—"} tone="green" />
+        <MetricCard icon={XCircle} label="Total Inactive" value={summary?.inactive ?? "—"} tone="orange" />
+        <MetricCard icon={Truck} label="Total Busy" value={summary?.busy ?? "—"} tone="blue" />
+        <MetricCard icon={Wrench} label="Total Maintenance" value={summary?.maintenance ?? "—"} tone="amber" />
+      </section>
+
       <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
         <div className="border-b border-outline-variant px-6 py-5">
           <h2 className="text-xl font-semibold text-primary-container">All Trucks</h2>

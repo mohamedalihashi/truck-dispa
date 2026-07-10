@@ -1,20 +1,24 @@
 import { useState } from "react";
-import { Eye } from "lucide-react";
+import { CheckCircle2, Clock, Eye, Route, Truck, XCircle } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
-import { useTripActions, useTrips } from "../../hooks/useApi";
+import { MetricCard } from "../../components/ui/MetricCard";
+import { useTripActions, useTripSummary, useTrips } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { useAuth } from "../../contexts/AuthContext";
 import { money, nextTripStatus, TRIP_STATUSES } from "../../utils/helpers";
 
 export function TripsPage() {
   const { user } = useAuth();
+  const { search } = useDashboardSearch();
   const [statusFilter, setStatusFilter] = useState("");
   const [viewing, setViewing] = useState(null);
   const [error, setError] = useState("");
-  const { data, isLoading } = useTrips({ status: statusFilter || undefined });
+  const { data, isLoading } = useTrips({ status: statusFilter || undefined, search: search || undefined });
+  const { data: summary } = useTripSummary();
   const actions = useTripActions();
   const canManage = user.role === "dispatcher" || user.role === "admin";
 
@@ -39,6 +43,14 @@ export function TripsPage() {
           {error}
         </p>
       )}
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <MetricCard icon={Route} label="Total Trips" value={summary?.total ?? "—"} tone="navy" />
+        <MetricCard icon={Truck} label="Total Active" value={summary?.active ?? "—"} tone="blue" />
+        <MetricCard icon={Clock} label="Total Pending" value={summary?.pending ?? "—"} tone="amber" />
+        <MetricCard icon={XCircle} label="Total Cancelled" value={summary?.cancelled ?? "—"} tone="orange" />
+        <MetricCard icon={CheckCircle2} label="Total Received" value={summary?.delivered ?? "—"} tone="green" />
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <select className="stitch-input max-w-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>

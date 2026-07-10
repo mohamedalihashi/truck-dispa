@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/Button";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Modal } from "../../components/ui/Modal";
 import { useTripActions, useTrips } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { driverTripActionLabel, nextDriverTripStatus, TRIP_STATUSES } from "../../utils/helpers";
 import { randomSomaliaCoords } from "../../utils/geo";
 import { api } from "../../services/api";
@@ -14,7 +15,8 @@ import { useQueryClient } from "@tanstack/react-query";
 const ACTIVE_STATUSES = ["Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delayed"];
 
 export function DriverJobsPage() {
-  const { data, isLoading } = useTrips();
+  const { search } = useDashboardSearch();
+  const { data, isLoading } = useTrips({ search: search || undefined });
   const actions = useTripActions();
   const fileRef = useRef(null);
   const qc = useQueryClient();

@@ -23,10 +23,19 @@ router.get("/", async (req, res, next) => {
   try {
     const result = await db.listTrucks({
       status: req.query.status,
+      search: req.query.search,
       page: req.query.page,
       limit: req.query.limit
     });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/summary", async (_req, res, next) => {
+  try {
+    res.json(await db.truckSummary());
   } catch (error) {
     next(error);
   }
@@ -40,7 +49,7 @@ router.get("/types", async (_req, res, next) => {
   }
 });
 
-router.post("/", requireRole("admin", "dispatcher"), validate(truckSchema), async (req, res, next) => {
+router.post("/", requireRole("admin"), validate(truckSchema), async (req, res, next) => {
   try {
     if (!req.body.truckType && !req.body.type) {
       return res.status(400).json({ message: "truckType is required" });
@@ -63,7 +72,7 @@ router.patch("/:id", requireRole("admin", "dispatcher", "driver"), async (req, r
   }
 });
 
-router.delete("/:id", requireRole("admin", "dispatcher"), async (req, res, next) => {
+router.delete("/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const ok = await db.deleteTruck(req.params.id);
     if (!ok) return res.status(404).json({ message: "Truck not found" });

@@ -116,8 +116,7 @@ export function roleHome(role) {
 export function navForRole(role) {
   const common = [
     { to: "", end: true, label: "Dashboard", icon: "dashboard" },
-    { to: "trips", label: "Trips", icon: "route" },
-    { to: "notifications", label: "Notifications", icon: "bell" }
+    { to: "trips", label: "Trips", icon: "route" }
   ];
 
   if (role === "admin") {
@@ -138,7 +137,7 @@ export function navForRole(role) {
     return [
       ...common,
       { to: "requests", label: "Requests", icon: "file" },
-      { to: "trucks", label: "Trucks", icon: "truck" },
+      { to: "drivers", label: "Drivers", icon: "users" },
       { to: "tracking", label: "Live Tracking", icon: "map" },
       { to: "earnings", label: "Earnings", icon: "chart" }
     ];
@@ -148,8 +147,7 @@ export function navForRole(role) {
       { to: "", end: true, label: "Dashboard", icon: "dashboard" },
       { to: "jobs", label: "My Jobs", icon: "route" },
       { to: "truck", label: "My Truck", icon: "truck" },
-      { to: "earnings", label: "Earnings", icon: "chart" },
-      { to: "notifications", label: "Notifications", icon: "bell" }
+      { to: "earnings", label: "Earnings", icon: "chart" }
     ];
   }
   return [
@@ -157,7 +155,6 @@ export function navForRole(role) {
     { to: "book", label: "Book Truck", icon: "plus" },
     { to: "shipments", label: "Shipments", icon: "package" },
     { to: "tracking", label: "Track", icon: "map" },
-    { to: "payments", label: "Payments", icon: "chart" },
-    { to: "notifications", label: "Notifications", icon: "bell" }
+    { to: "payments", label: "Payments", icon: "chart" }
   ];
 }

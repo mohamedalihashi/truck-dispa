@@ -1,12 +1,17 @@
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Truck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
 import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
 import { PublicSiteHeader } from "../components/PublicSiteHeader";
 import { roleHome } from "../utils/helpers";
+import {
+  clearRegisterVerification,
+  loadRegisterVerification,
+  saveRegisterVerification
+} from "../utils/verificationStorage";
 
 export function RegisterPage() {
   const { register: registerUser, verifyRegister, resendCode, isAuthenticated, user } = useAuth();
@@ -16,6 +21,8 @@ export function RegisterPage() {
   const [pendingEmail, setPendingEmail] = useState("");
   const [devCode, setDevCode] = useState("");
   const [info, setInfo] = useState("");
+  const [pendingRegistration, setPendingRegistration] = useState(null);
+  const [resending, setResending] = useState(false);
   const {
     register,
     handleSubmit,
@@ -26,6 +33,12 @@ export function RegisterPage() {
       code: ""
     }
   });
+
+  useEffect(() => {
+    const stored = loadRegisterVerification();
+    if (stored?.email) setPendingEmail(stored.email);
+    if (stored?.registration) setPendingRegistration(stored.registration);
+  }, []);
 
   if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
 
@@ -47,6 +60,8 @@ export function RegisterPage() {
       const result = await registerUser(payload);
       if (result.verificationRequired) {
         setPendingEmail(values.email);
+        setPendingRegistration(payload);
+        saveRegisterVerification(values.email, payload);
         setDevCode(result.devCode || "");
         setStep("verify");
         setInfo(result.message);
@@ -63,6 +78,7 @@ export function RegisterPage() {
     setError("");
     try {
       const result = await verifyRegister({ email: pendingEmail, code: values.code });
+      clearRegisterVerification();
       navigate(roleHome(result.user.role));
     } catch (err) {
       setError(err.message);
@@ -71,15 +87,35 @@ export function RegisterPage() {
 
   async function onResend() {
     setError("");
+    setInfo("");
+    const stored = loadRegisterVerification();
+    const email = pendingEmail || stored?.email;
+    const registration = pendingRegistration || stored?.registration;
+
+    if (!email) {
+      setError("Session expired. Please fill the registration form again.");
+      return;
+    }
+
+    setResending(true);
     try {
-      const result = await resendCode({ email: pendingEmail, purpose: "register" });
-      setInfo(result.message);
-      if (result.devCode) {
-        setDevCode(result.devCode);
-        setValue("code", result.devCode);
+      const result = await resendCode({
+        email,
+        purpose: "register",
+        registration: registration || undefined
+      });
+      setPendingEmail(email);
+      if (registration) {
+        setPendingRegistration(registration);
+        saveRegisterVerification(email, registration);
       }
+      setInfo(result.message || "A new verification code was sent.");
+      setDevCode(result.devCode || "");
+      setValue("code", result.devCode || "");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -172,8 +208,13 @@ export function RegisterPage() {
                 >
                   Back
                 </button>
-                <button type="button" className="font-semibold text-secondary-container hover:underline" onClick={onResend}>
-                  Resend code
+                <button
+                  type="button"
+                  className="font-semibold text-secondary-container hover:underline disabled:opacity-60"
+                  onClick={onResend}
+                  disabled={resending}
+                >
+                  {resending ? "Sending…" : "Resend code"}
                 </button>
               </div>
             </form>

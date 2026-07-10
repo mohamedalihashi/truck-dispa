@@ -7,6 +7,11 @@ import { Button } from "../components/ui/Button";
 import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
 import { PublicSiteHeader } from "../components/PublicSiteHeader";
 import { roleHome, DEMO_ACCOUNTS, DEMO_PASSWORD } from "../utils/helpers";
+import {
+  clearLoginVerification,
+  loadLoginVerification,
+  saveLoginVerification
+} from "../utils/verificationStorage";
 
 export function LoginPage() {
   const { login, verifyLogin, resendCode, isAuthenticated, user } = useAuth();
@@ -19,6 +24,7 @@ export function LoginPage() {
   const [pendingPassword, setPendingPassword] = useState(location.state?.password || "");
   const [devCode, setDevCode] = useState("");
   const [info, setInfo] = useState(location.state?.step === "verify" ? "Check your email for the verification code." : "");
+  const [resending, setResending] = useState(false);
   const {
     register,
     handleSubmit,
@@ -35,6 +41,9 @@ export function LoginPage() {
   useEffect(() => {
     if (location.state?.email) setValue("email", location.state.email);
     if (location.state?.password) setValue("password", location.state.password);
+    const stored = loadLoginVerification();
+    if (stored?.email) setPendingEmail(stored.email);
+    if (stored?.password) setPendingPassword(stored.password);
   }, [location.state, setValue]);
 
   if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
@@ -47,6 +56,7 @@ export function LoginPage() {
       if (result.verificationRequired) {
         setPendingEmail(values.email);
         setPendingPassword(values.password);
+        saveLoginVerification(values.email, values.password);
         setDevCode(result.devCode || "");
         setStep("verify");
         setInfo(result.message);
@@ -68,6 +78,7 @@ export function LoginPage() {
     setInfo("");
     try {
       const result = await verifyLogin({ email: pendingEmail, code: values.code });
+      clearLoginVerification();
       if (result.user?.mustChangePassword) {
         navigate("/change-password", { replace: true });
         return;
@@ -80,19 +91,33 @@ export function LoginPage() {
 
   async function onResend() {
     setError("");
+    setInfo("");
+    const stored = loadLoginVerification();
+    const email = pendingEmail || stored?.email;
+    const password = pendingPassword || stored?.password;
+
+    if (!email || !password) {
+      setError("Session expired. Go back and sign in again.");
+      return;
+    }
+
+    setResending(true);
     try {
       const result = await resendCode({
-        email: pendingEmail,
-        password: pendingPassword,
+        email,
+        password,
         purpose: "login"
       });
-      setInfo(result.message);
-      if (result.devCode) {
-        setDevCode(result.devCode);
-        setValue("code", result.devCode);
-      }
+      setPendingEmail(email);
+      setPendingPassword(password);
+      saveLoginVerification(email, password);
+      setInfo(result.message || "A new verification code was sent.");
+      setDevCode(result.devCode || "");
+      setValue("code", result.devCode || "");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -201,8 +226,13 @@ export function LoginPage() {
                 >
                   Back
                 </button>
-                <button type="button" className="font-semibold text-secondary-container hover:underline" onClick={onResend}>
-                  Resend code
+                <button
+                  type="button"
+                  className="font-semibold text-secondary-container hover:underline disabled:opacity-60"
+                  onClick={onResend}
+                  disabled={resending}
+                >
+                  {resending ? "Sending…" : "Resend code"}
                 </button>
               </div>
             </form>

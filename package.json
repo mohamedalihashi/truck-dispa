@@ -10,7 +10,7 @@
     "build": "npm run build --prefix frontend",
     "start": "npm run start --prefix backend",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
-    "postinstall": "prisma generate --schema backend/prisma/schema.prisma"
+    "postinstall": "npm run prisma:generate --prefix backend"
   },
   "prisma": {
     "schema": "backend/prisma/schema.prisma"

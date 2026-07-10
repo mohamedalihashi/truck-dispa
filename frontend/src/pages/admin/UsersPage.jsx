@@ -1,33 +1,47 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, Pencil, Plus, Trash2, Truck, UserCheck, UserCog, Users, UserX } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { StatusBadge } from "../../components/ui/StatusBadge";
-import { useUserMutations, useUsers } from "../../hooks/useApi";
+import { MetricCard } from "../../components/ui/MetricCard";
+import { useUserMutations, useUserSummary, useUsers } from "../../hooks/useApi";
+import { useDashboardSearch } from "../../hooks/useDashboardSearch";
+import { useAuth } from "../../contexts/AuthContext";
 
 export function UsersPage() {
-  const [role, setRole] = useState("");
-  const [search, setSearch] = useState("");
+  const { user: authUser } = useAuth();
+  const isDispatcher = authUser.role === "dispatcher";
+  const [role, setRole] = useState(isDispatcher ? "driver" : "");
+  const { search, hasSearch } = useDashboardSearch();
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [createInfo, setCreateInfo] = useState("");
+  const [truckPhoto1, setTruckPhoto1] = useState(null);
+  const [truckPhoto2, setTruckPhoto2] = useState(null);
+  const [photo1Preview, setPhoto1Preview] = useState("");
+  const [photo2Preview, setPhoto2Preview] = useState("");
   const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
+  const { data: summary } = useUserSummary();
   const mutations = useUserMutations();
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { role: "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" }
+    defaultValues: { role: isDispatcher ? "driver" : "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" }
   });
-  const selectedRole = watch("role");
+  const selectedRole = isDispatcher ? "driver" : watch("role");
 
   function openCreate() {
     setEditing(null);
     setError("");
     setCreateInfo("");
-    reset({ role: "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" });
+    setTruckPhoto1(null);
+    setTruckPhoto2(null);
+    setPhoto1Preview("");
+    setPhoto2Preview("");
+    reset({ role: isDispatcher ? "driver" : "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" });
     setOpen(true);
   }
 
@@ -48,6 +62,10 @@ export function UsersPage() {
     setError("");
     try {
       if (editing) {
+        if (isDispatcher) {
+          setError("Dispatchers cannot edit accounts. Contact an admin.");
+          return;
+        }
         const payload = {
           name: values.name,
           email: values.email,
@@ -58,21 +76,34 @@ export function UsersPage() {
         if (values.password) payload.password = values.password;
         await mutations.update.mutateAsync({ id: editing.id, payload });
       } else {
-        const payload = {
-          name: values.name,
-          email: values.email,
-          role: values.role,
-          phone: values.phone || undefined
-        };
-        if (values.role === "driver") {
-          payload.truck = {
-            truckNumber: values.truckNumber,
-            plateNumber: values.plateNumber,
-            capacity: values.capacity,
-            truckType: values.truckType
+        let result;
+        const createRole = isDispatcher ? "driver" : values.role;
+        if (createRole === "driver") {
+          if (!truckPhoto1 || !truckPhoto2) {
+            setError("Two truck photos are required for driver registration.");
+            return;
+          }
+          const formData = new FormData();
+          formData.append("name", values.name);
+          formData.append("email", values.email);
+          formData.append("role", createRole);
+          if (values.phone) formData.append("phone", values.phone);
+          formData.append("truckNumber", values.truckNumber);
+          formData.append("plateNumber", values.plateNumber);
+          formData.append("capacity", values.capacity);
+          formData.append("truckType", values.truckType);
+          formData.append("truckPhoto1", truckPhoto1);
+          formData.append("truckPhoto2", truckPhoto2);
+          result = await mutations.create.mutateAsync(formData);
+        } else {
+          const payload = {
+            name: values.name,
+            email: values.email,
+            role: values.role,
+            phone: values.phone || undefined
           };
+          result = await mutations.create.mutateAsync(payload);
         }
-        const result = await mutations.create.mutateAsync(payload);
         const parts = [result.message || "User created. Credentials sent by email."];
         if (result.devPassword) parts.push(`Temp password: ${result.devPassword}`);
         if (result.devCode) parts.push(`Login OTP: ${result.devCode}`);
@@ -87,6 +118,7 @@ export function UsersPage() {
   }
 
   async function onDelete(id) {
+    if (isDispatcher) return;
     if (!confirm("Delete this user?")) return;
     try {
       await mutations.remove.mutateAsync(id);
@@ -98,11 +130,15 @@ export function UsersPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Users"
-        subtitle="Manage admins, dispatchers, customers, and driver-truck accounts."
+        title={isDispatcher ? "Drivers" : "Users"}
+        subtitle={
+          isDispatcher
+            ? "Register drivers together with their truck and photos."
+            : "Manage admins, dispatchers, customers, and driver-truck accounts."
+        }
         actions={
           <Button onClick={openCreate}>
-            <Plus size={16} /> Add user
+            <Plus size={16} /> {isDispatcher ? "Add driver" : "Add user"}
           </Button>
         }
       />
@@ -113,24 +149,44 @@ export function UsersPage() {
         </p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          className="stitch-input max-w-sm"
-          placeholder="Search name or email"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className="stitch-input max-w-xs"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-        >
-          <option value="">All roles</option>
-          <option value="admin">Admin</option>
-          <option value="dispatcher">Dispatcher</option>
-          <option value="customer">Customer</option>
-          <option value="driver">Driver</option>
-        </select>
+      <section className={`grid grid-cols-2 gap-3 ${isDispatcher ? "md:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-6"}`}>
+        {isDispatcher ? (
+          <>
+            <MetricCard icon={Users} label="Total Drivers" value={summary?.drivers ?? "—"} tone="navy" />
+            <MetricCard icon={UserCheck} label="Active Drivers" value={summary?.driverActive ?? "—"} tone="green" />
+            <MetricCard icon={Truck} label="Fleet Trucks" value={summary?.trucks ?? "—"} tone="soft" />
+          </>
+        ) : (
+          <>
+            <MetricCard icon={Users} label="Total Users" value={summary?.total ?? "—"} tone="navy" />
+            <MetricCard icon={UserCheck} label="Total Active" value={summary?.active ?? "—"} tone="green" />
+            <MetricCard icon={UserX} label="Total Inactive" value={summary?.inactive ?? "—"} tone="orange" />
+            <MetricCard icon={Users} label="Total Customers" value={summary?.customers ?? "—"} tone="blue" />
+            <MetricCard icon={UserCog} label="Total Dispatchers" value={summary?.dispatchers ?? "—"} tone="amber" />
+            <MetricCard icon={Truck} label="Total Trucks" value={summary?.trucks ?? "—"} tone="soft" />
+          </>
+        )}
+      </section>
+
+      <div className="flex flex-wrap items-center gap-3">
+        {hasSearch ? (
+          <p className="text-sm text-on-surface-variant">
+            Showing results for <span className="font-semibold text-on-surface">&quot;{search}&quot;</span>
+          </p>
+        ) : null}
+        {!isDispatcher ? (
+          <select
+            className="stitch-input max-w-xs"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
+            <option value="">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="dispatcher">Dispatcher</option>
+            <option value="customer">Customer</option>
+            <option value="driver">Driver</option>
+          </select>
+        ) : null}
       </div>
 
       <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
@@ -138,14 +194,14 @@ export function UsersPage() {
           <h2 className="text-xl font-semibold text-primary-container">Directory</h2>
         </div>
         {isLoading ? (
-          <p className="py-10 text-center text-sm text-on-surface-variant">Loading users…</p>
+          <p className="py-10 text-center text-sm text-on-surface-variant">{isDispatcher ? "Loading drivers…" : "Loading users…"}</p>
         ) : (
           <DataTable
             rows={data?.data || []}
             columns={[
               { key: "name", label: "Name" },
               { key: "email", label: "Email" },
-              { key: "role", label: "Role" },
+              ...(!isDispatcher ? [{ key: "role", label: "Role" }] : []),
               {
                 key: "status",
                 label: "Status",
@@ -164,12 +220,16 @@ export function UsersPage() {
                     <button type="button" className="text-on-surface-variant" onClick={() => setViewing(row)} title="View">
                       <Eye size={16} />
                     </button>
-                    <button type="button" className="text-secondary-container" onClick={() => openEdit(row)} title="Edit">
-                      <Pencil size={16} />
-                    </button>
-                    <button type="button" className="text-error" onClick={() => onDelete(row.id)} title="Delete">
-                      <Trash2 size={16} />
-                    </button>
+                    {!isDispatcher ? (
+                      <>
+                        <button type="button" className="text-secondary-container" onClick={() => openEdit(row)} title="Edit">
+                          <Pencil size={16} />
+                        </button>
+                        <button type="button" className="text-error" onClick={() => onDelete(row.id)} title="Delete">
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 )
               }
@@ -198,13 +258,19 @@ export function UsersPage() {
           </dl>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
-            <Button onClick={() => { setViewing(null); openEdit(viewing); }}>Edit user</Button>
+            {!isDispatcher ? (
+              <Button onClick={() => { setViewing(null); openEdit(viewing); }}>Edit user</Button>
+            ) : null}
           </div>
         </Modal>
       )}
 
       {open && (
-        <Modal title={editing ? "Edit user" : "Create user"} onClose={() => setOpen(false)} wide>
+        <Modal
+          title={editing ? (isDispatcher ? "Edit driver" : "Edit user") : (isDispatcher ? "Add driver" : "Create user")}
+          onClose={() => setOpen(false)}
+          wide
+        >
           <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <input className="stitch-input" placeholder="Name" {...register("name", { required: true })} />
             <input className="stitch-input" placeholder="Phone" {...register("phone")} />
@@ -218,16 +284,20 @@ export function UsersPage() {
               />
             ) : (
               <p className="sm:col-span-2 rounded-lg bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
-                A temporary password and login OTP will be emailed automatically. The user must set a new password on first sign-in.
+                A temporary password and login OTP will be emailed automatically. The driver must set a new password on first sign-in.
               </p>
             )}
-            <select className="stitch-input" {...register("role")}>
-              <option value="customer">Customer</option>
-              <option value="dispatcher">Dispatcher</option>
-              <option value="driver">Driver</option>
-              <option value="admin">Admin</option>
-            </select>
-            {editing && (
+            {!isDispatcher ? (
+              <select className="stitch-input" {...register("role")}>
+                <option value="customer">Customer</option>
+                <option value="dispatcher">Dispatcher</option>
+                <option value="driver">Driver</option>
+                <option value="admin">Admin</option>
+              </select>
+            ) : (
+              <input type="hidden" {...register("role")} value="driver" />
+            )}
+            {editing && !isDispatcher && (
               <select className="stitch-input" {...register("status")}>
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
@@ -243,6 +313,40 @@ export function UsersPage() {
                   <option>Flatbed</option>
                   <option>Refrigerated</option>
                 </select>
+                <label className="sm:col-span-2 block text-sm">
+                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo 1 *</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="stitch-input w-full"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      setTruckPhoto1(file || null);
+                      setPhoto1Preview(file ? URL.createObjectURL(file) : "");
+                    }}
+                    required
+                  />
+                  {photo1Preview ? (
+                    <img src={photo1Preview} alt="Truck preview 1" className="mt-2 h-24 w-full rounded-lg object-cover" />
+                  ) : null}
+                </label>
+                <label className="sm:col-span-2 block text-sm">
+                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo 2 *</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="stitch-input w-full"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      setTruckPhoto2(file || null);
+                      setPhoto2Preview(file ? URL.createObjectURL(file) : "");
+                    }}
+                    required
+                  />
+                  {photo2Preview ? (
+                    <img src={photo2Preview} alt="Truck preview 2" className="mt-2 h-24 w-full rounded-lg object-cover" />
+                  ) : null}
+                </label>
               </>
             )}
             {error && <p className="sm:col-span-2 text-sm text-red-600">{error}</p>}
@@ -251,7 +355,7 @@ export function UsersPage() {
                 Cancel
               </Button>
               <Button disabled={isSubmitting || mutations.create.isPending || mutations.update.isPending}>
-                {editing ? "Save changes" : "Create"}
+                {editing ? "Save changes" : (isDispatcher ? "Register driver" : "Create")}
               </Button>
             </div>
           </form>

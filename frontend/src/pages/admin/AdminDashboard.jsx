@@ -51,7 +51,7 @@ export function AdminDashboard() {
     <div className="space-y-8">
       <PageHeader
         title="Admin Control Center"
-        subtitle="Real-time overview of fleet operations and logistics metrics."
+        subtitle="Real-time overview of fleet operations and truck dispatch metrics."
         actions={
           <>
             <Link to="/admin/reports">
@@ -64,7 +64,7 @@ export function AdminDashboard() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard icon={Users} label="Total Users" value={stats?.totalUsers ?? "—"} hint="+12%" tone="orange" />
         <MetricCard icon={Truck} label="Total Trucks" value={stats?.totalTrucks ?? "—"} hint="+5%" tone="blue" />
         <MetricCard icon={Users} label="Active Drivers" value={stats?.totalDrivers ?? "—"} hint="Stable" tone="navy" />

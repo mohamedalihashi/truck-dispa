@@ -42,7 +42,7 @@ export function LandingPage() {
             <div className="space-y-4 text-white">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-on-primary-fixed-variant/20 px-4 py-1.5 backdrop-blur-md">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-secondary-container" />
-                <span className="text-xs font-medium uppercase tracking-widest text-secondary-fixed">Next-Gen Logistics Platform</span>
+                <span className="text-xs font-medium uppercase tracking-widest text-secondary-fixed">Truck Dispatcher Platform</span>
               </div>
               <h1 className="text-5xl font-extrabold leading-[1.1] md:text-6xl">
                 Smart Truck Dispatching
@@ -73,7 +73,7 @@ export function LandingPage() {
                   ))}
                 </div>
                 <p className="text-xs text-on-primary-container">
-                  Trusted by <span className="font-bold text-white">10,000+</span> logistics professionals worldwide
+                  Trusted by <span className="font-bold text-white">10,000+</span> Truck Dispatcher professionals worldwide
                 </p>
               </div>
             </div>
@@ -127,7 +127,7 @@ export function LandingPage() {
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-secondary">Platform Excellence</p>
               <h2 className="text-[32px] font-bold tracking-tight text-primary">Why Choose TruckDispatch?</h2>
               <p className="mx-auto max-w-2xl text-on-surface-variant">
-                We provide the most robust infrastructure for modern logistics, built for precision and speed.
+                We provide the most robust infrastructure for modern truck dispatch, built for precision and speed.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
@@ -190,7 +190,7 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-6">
             <div className="mb-20 text-center">
               <h2 className="text-[32px] font-bold text-primary">How It Works</h2>
-              <p className="mt-4 text-on-surface-variant">Streamlining logistics in four simple steps</p>
+              <p className="mt-4 text-on-surface-variant">Streamlining truck dispatch in four simple steps</p>
             </div>
             <div className="relative">
               <div className="absolute left-0 top-12 hidden h-[2px] w-full border-t border-dashed border-outline-variant lg:block" />
@@ -231,7 +231,7 @@ export function LandingPage() {
             <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
               {[
                 ["Great service! My goods were delivered on time and in perfect condition. The driver was professional.", "Sarah Johnson", "CEO, Retail Solutions", AVATARS[0]],
-                ["TruckDispatch made logistics so easy and transparent. Real-time tracking is very accurate and helpful for our operations.", "Michael Brown", "Operations Manager, FabLink", AVATARS[1]],
+                ["TruckDispatch made truck dispatch so easy and transparent. Real-time tracking is very accurate and helpful for our operations.", "Michael Brown", "Operations Manager, FabLink", AVATARS[1]],
                 ["Excellent support and the platform is very intuitive. Our fleet efficiency has increased by 40% since we joined.", "Priya Sharma", "Director, Global Supply", AVATARS[2]]
               ].map(([quote, name, role, img]) => (
                 <article key={name} className="rounded-3xl border border-outline-variant/30 bg-surface-container-lowest p-6 shadow-sm">
@@ -256,7 +256,7 @@ export function LandingPage() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(254,107,0,0.08),transparent)]" />
           <div className="relative z-10 mx-auto max-w-7xl px-6 text-center text-white">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary-fixed-dim">
-              Somalia Logistics Network
+              Somalia Truck Dispatcher Network
             </p>
             <h2 className="mt-3 text-[32px] font-bold">Join the TruckDispatch Marketplace</h2>
             <p className="mx-auto mt-4 max-w-2xl text-on-primary-container">
@@ -326,7 +326,7 @@ export function LandingPage() {
                 <div className="rounded-lg bg-secondary-container p-1.5 text-white"><Truck size={18} /></div>
                 <span className="text-xl font-semibold text-primary">TruckDispatch</span>
               </div>
-              <p className="mb-8 text-sm text-on-surface-variant">A smart logistics platform connecting shippers, drivers and truck owners for seamless deliveries.</p>
+              <p className="mb-8 text-sm text-on-surface-variant">A smart Truck Dispatcher platform connecting shippers, drivers and truck owners for seamless deliveries.</p>
               <div className="flex gap-4">
                 {[Share2, Globe, Video].map((Icon) => (
                   <span key={Icon.name} className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-container text-primary">
@@ -349,7 +349,7 @@ export function LandingPage() {
             </div>
             <div>
               <h5 className="mb-6 text-sm font-semibold text-primary">Subscribe</h5>
-              <p className="mb-4 text-sm text-on-surface-variant">Get the latest logistics news and updates.</p>
+              <p className="mb-4 text-sm text-on-surface-variant">Get the latest Truck Dispatcher news and updates.</p>
               <div className="flex gap-2">
                 <input className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm" placeholder="Email address" />
                 <button type="button" className="rounded-lg bg-primary px-4 py-2 text-white">Join</button>
