@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Download,
   Home,
   LayoutDashboard,
   LogIn,
@@ -12,9 +11,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
-import { IosInstallGuide } from "./IosInstallGuide";
-import { AndroidInstallGuide } from "./AndroidInstallGuide";
-import { usePwaInstall } from "../hooks/usePwaInstall";
 import { roleHome } from "../utils/helpers";
 
 const LANDING_LINKS = [
@@ -25,11 +21,8 @@ const LANDING_LINKS = [
 
 export function PublicSiteHeader({ variant = "landing", className = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [installGuideOpen, setInstallGuideOpen] = useState(false);
-  const [androidGuideOpen, setAndroidGuideOpen] = useState(false);
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const { standalone, showIosGuide, showAndroidInstall, canNativeInstall, install } = usePwaInstall();
 
   function closeMenu() {
     setMenuOpen(false);
@@ -43,21 +36,6 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
     }
     navigate(`/${href}`);
   }
-
-  async function onInstallClick() {
-    closeMenu();
-    if (showIosGuide) {
-      setInstallGuideOpen(true);
-      return;
-    }
-    if (canNativeInstall) {
-      await install();
-      return;
-    }
-    if (showAndroidInstall) setAndroidGuideOpen(true);
-  }
-
-  const showInstallItem = !standalone;
 
   return (
     <>
@@ -207,26 +185,7 @@ export function PublicSiteHeader({ variant = "landing", className = "" }) {
             </>
           )}
         </nav>
-
-        {showInstallItem ? (
-          <div
-            className="mt-auto border-t border-outline-variant/40 pt-4"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          >
-            <button
-              type="button"
-              onClick={onInstallClick}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-on-primary"
-            >
-              <Download size={18} />
-              {showIosGuide ? "Ku rakib App-ka (iOS)" : "Install App"}
-            </button>
-          </div>
-        ) : null}
       </aside>
-
-      <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />
-      <AndroidInstallGuide open={androidGuideOpen} onClose={() => setAndroidGuideOpen(false)} />
     </>
   );
 }

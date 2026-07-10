@@ -2,7 +2,6 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bell,
-  Download,
   FileText,
   HelpCircle,
   LayoutDashboard,
@@ -20,9 +19,6 @@ import {
   X
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { IosInstallGuide } from "../components/IosInstallGuide";
-import { AndroidInstallGuide } from "../components/AndroidInstallGuide";
-import { usePwaInstall } from "../hooks/usePwaInstall";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import { useRealtimeInvalidation } from "../hooks/useApi";
@@ -57,11 +53,8 @@ export function DashboardLayout() {
   const { connected } = useSocket();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [installGuideOpen, setInstallGuideOpen] = useState(false);
-  const [androidGuideOpen, setAndroidGuideOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const { standalone, showIosGuide, showAndroidInstall, canNativeInstall, install } = usePwaInstall();
   useRealtimeInvalidation();
 
   useEffect(() => {
@@ -84,18 +77,6 @@ export function DashboardLayout() {
     else if (user.role === "dispatcher") navigate(`${base}/drivers`);
     else if (user.role === "driver") navigate(`${base}/jobs`);
     else navigate(`${base}/users`);
-  }
-
-  async function onInstallApp() {
-    if (showIosGuide) {
-      setInstallGuideOpen(true);
-      return;
-    }
-    if (canNativeInstall) {
-      await install();
-      return;
-    }
-    if (showAndroidInstall) setAndroidGuideOpen(true);
   }
 
   return (
@@ -213,17 +194,6 @@ export function DashboardLayout() {
             <LogOut size={14} />
             Sign out
           </button>
-
-          {!standalone ? (
-            <button
-              type="button"
-              onClick={onInstallApp}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-secondary-container hover:text-white"
-            >
-              <Download size={14} />
-              {showIosGuide ? "Ku rakib App-ka" : "Install app"}
-            </button>
-          ) : null}
         </div>
       </aside>
 
@@ -294,9 +264,6 @@ export function DashboardLayout() {
           <Outlet context={{ search: debouncedSearch }} />
         </div>
       </main>
-
-      <IosInstallGuide open={installGuideOpen} onClose={() => setInstallGuideOpen(false)} />
-      <AndroidInstallGuide open={androidGuideOpen} onClose={() => setAndroidGuideOpen(false)} />
     </div>
   );
 }

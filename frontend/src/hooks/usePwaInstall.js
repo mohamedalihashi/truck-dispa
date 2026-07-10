@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   canShowInstallPrompt,
   dismissPwaPrompt,
-  isIos,
   isPwaDismissed,
   isStandalone
 } from "../utils/pwa";
@@ -11,15 +10,10 @@ export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [dismissed, setDismissed] = useState(isPwaDismissed);
 
-  const standalone = isStandalone();
-  const ios = isIos();
-  const canPrompt = canShowInstallPrompt() && !dismissed;
-  const showIosGuide = ios && canPrompt;
-  const showAndroidInstall = !ios && canPrompt;
-  const canNativeInstall = Boolean(deferredPrompt);
+  const canShow = canShowInstallPrompt() && !dismissed && Boolean(deferredPrompt);
 
   useEffect(() => {
-    if (standalone || dismissed || ios) return;
+    if (isStandalone() || dismissed) return;
 
     function onBeforeInstall(event) {
       event.preventDefault();
@@ -28,7 +22,7 @@ export function usePwaInstall() {
 
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
     return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-  }, [standalone, dismissed, ios]);
+  }, [dismissed]);
 
   function dismiss() {
     dismissPwaPrompt();
@@ -45,14 +39,5 @@ export function usePwaInstall() {
     return outcome === "accepted";
   }
 
-  return {
-    standalone,
-    ios,
-    canPrompt,
-    showIosGuide,
-    showAndroidInstall,
-    canNativeInstall,
-    dismiss,
-    install
-  };
+  return { canShow, dismiss, install };
 }
