@@ -22,6 +22,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
 import { useRealtimeInvalidation } from "../hooks/useApi";
+import { useDriverGpsTracking } from "../hooks/useDriverGpsTracking";
 import { navForRole, roleHome } from "../utils/helpers";
 import { resolveUploadUrl } from "../config/api.js";
 import { Button } from "../components/ui/Button";
@@ -56,6 +57,7 @@ export function DashboardLayout() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useRealtimeInvalidation();
+  const gps = useDriverGpsTracking();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -194,6 +196,13 @@ export function DashboardLayout() {
             <LogOut size={14} />
             Sign out
           </button>
+
+          {user.role === "driver" && gps.active ? (
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-emerald-300">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              GPS live · {gps.trackingTripId}
+            </p>
+          ) : null}
         </div>
       </aside>
 

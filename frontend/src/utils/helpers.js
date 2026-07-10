@@ -63,6 +63,25 @@ export const TRIP_STATUSES = [...TRIP_FLOW, "Delayed", "Cancelled"];
 
 export const DRIVER_TRIP_FLOW = ["Accepted", "Arrived Pickup", "In Transit", "Delivered"];
 
+/** Trip statuses where the driver phone should stream GPS to the server. */
+export const LIVE_TRACKING_STATUSES = [
+  "Accepted",
+  "Arrived Pickup",
+  "Loaded",
+  "In Transit",
+  "Delayed"
+];
+
+/** Trip statuses shown on the live tracking map. */
+export const LIVE_MAP_STATUSES = [
+  "Assigned",
+  "Accepted",
+  "Arrived Pickup",
+  "Loaded",
+  "In Transit",
+  "Delayed"
+];
+
 export function driverTripActionLabel(status) {
   switch (status) {
     case "Assigned":

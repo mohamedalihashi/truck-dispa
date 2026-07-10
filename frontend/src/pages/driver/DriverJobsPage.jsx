@@ -8,7 +8,6 @@ import { Modal } from "../../components/ui/Modal";
 import { useTripActions, useTrips } from "../../hooks/useApi";
 import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { driverTripActionLabel, nextDriverTripStatus, TRIP_STATUSES } from "../../utils/helpers";
-import { randomSomaliaCoords } from "../../utils/geo";
 import { api } from "../../services/api";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -54,32 +53,31 @@ export function DriverJobsPage() {
   }
 
   async function shareGps(id) {
-    const send = (lat, lng) => actions.shareLocation.mutateAsync({ id, lat, lng });
-    if (navigator.geolocation) {
-      await new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      setError("GPS is not available on this device.");
+      return;
+    }
+
+    await runAction(`Location shared for ${id}`, () =>
+      new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
             try {
-              await send(pos.coords.latitude, pos.coords.longitude);
+              await actions.shareLocation.mutateAsync({
+                id,
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude
+              });
               resolve();
             } catch (err) {
               reject(err);
             }
           },
-          async () => {
-            const { lat, lng } = randomSomaliaCoords();
-            await send(lat, lng);
-            resolve();
-          }
+          (err) => reject(new Error(err.message || "Could not read GPS location. Allow location access and try again.")),
+          { enableHighAccuracy: true, timeout: 20_000 }
         );
-      });
-      setMessage(`Location shared for ${id}`);
-    } else {
-      await runAction(`Location shared for ${id}`, () => {
-        const { lat, lng } = randomSomaliaCoords();
-        return send(lat, lng);
-      });
-    }
+      })
+    );
   }
 
   async function uploadProof(event) {
@@ -99,7 +97,7 @@ export function DriverJobsPage() {
     <div className="space-y-8">
       <PageHeader
         title="My Jobs"
-        subtitle="Create proof & location updates. View, advance status, or reject assigned jobs."
+        subtitle="GPS streams automatically on active jobs. You can also share location manually."
       />
 
       {message && (

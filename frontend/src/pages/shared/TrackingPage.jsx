@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Filter, LocateFixed, Maximize2, Truck } from "lucide-react";
+import { Filter, LocateFixed, Maximize2, Radio, Truck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -7,30 +7,24 @@ import { Button } from "../../components/ui/Button";
 import { FleetMap } from "../../components/map/FleetMap";
 import { useTripActions, useTrips } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
-import { randomSomaliaCoords } from "../../utils/geo";
-import { nextTripStatus, roleHome } from "../../utils/helpers";
+import { isRealtimeSocketEnabled } from "../../config/api";
+import { LIVE_MAP_STATUSES, nextTripStatus, roleHome } from "../../utils/helpers";
+
+const LIVE_POLL_MS = 15_000;
 
 export function TrackingPage() {
   const { user } = useAuth();
-  const { data } = useTrips();
+  const { data, dataUpdatedAt, refetch, isFetching } = useTrips(
+    {},
+    { refetchInterval: LIVE_POLL_MS }
+  );
   const actions = useTripActions();
   const [selectedId, setSelectedId] = useState(null);
   const canManage = user.role === "dispatcher" || user.role === "admin";
   const base = roleHome(user.role);
-  const live = (data?.data || []).filter((trip) =>
-    ["Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delayed"].includes(trip.status)
-  );
+  const live = (data?.data || []).filter((trip) => LIVE_MAP_STATUSES.includes(trip.status));
   const selected = live.find((t) => t.id === selectedId) || live[0] || null;
-
-  async function refreshLocation(trip) {
-    if (!trip) return;
-    const { lat, lng } = randomSomaliaCoords();
-    try {
-      await actions.shareLocation.mutateAsync({ id: trip.id, lat, lng });
-    } catch (err) {
-      alert(err.message);
-    }
-  }
+  const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "—";
 
   async function updateStatus(trip, status) {
     try {
@@ -58,6 +52,19 @@ export function TrackingPage() {
         }
       />
 
+      <div className="flex flex-wrap items-center gap-3 text-sm text-on-surface-variant">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <Radio size={14} className={isFetching ? "animate-pulse" : ""} />
+          Live · updates every {LIVE_POLL_MS / 1000}s
+        </span>
+        <span>Last sync: {lastUpdated}</span>
+        {!isRealtimeSocketEnabled() ? (
+          <span className="text-xs">Production polling mode</span>
+        ) : (
+          <span className="text-xs">Socket + polling</span>
+        )}
+      </div>
+
       <div className="grid grid-cols-12 gap-6">
         <section className="col-span-12 flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-8">
           <div className="flex items-center justify-between border-b border-outline-variant px-6 py-5">
@@ -66,6 +73,14 @@ export function TrackingPage() {
               <p className="text-xs text-on-surface-variant">{live.length} active loads on corridor</p>
             </div>
             <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-container-low"
+                title="Refresh map"
+              >
+                <LocateFixed size={18} />
+              </button>
               <button type="button" className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-container-low">
                 <Filter size={18} />
               </button>
@@ -103,7 +118,7 @@ export function TrackingPage() {
                   <p className="mt-2 text-xs text-on-primary-container/80">
                     {trip.lastLocation
                       ? `${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
-                      : "Awaiting GPS ping"}
+                      : "Awaiting driver GPS"}
                   </p>
                 </button>
               ))}
@@ -139,18 +154,20 @@ export function TrackingPage() {
                 <p className="mt-1 text-sm font-medium">
                   {trip.pickup} → {trip.destination}
                 </p>
-                {trip.lastLocation && (
+                {trip.lastLocation ? (
                   <p className="mt-1 text-xs text-on-surface-variant">
                     GPS: {Number(trip.lastLocation.lat).toFixed(4)}, {Number(trip.lastLocation.lng).toFixed(4)}
+                    {trip.lastLocation.updatedAt
+                      ? ` · ${new Date(trip.lastLocation.updatedAt).toLocaleTimeString()}`
+                      : ""}
                   </p>
+                ) : (
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Waiting for driver GPS signal</p>
                 )}
                 {canManage && (
                   <div className="mt-3 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button className="px-2 py-1 text-xs" onClick={() => updateStatus(trip, nextTripStatus(trip.status))}>
                       Advance
-                    </Button>
-                    <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => refreshLocation(trip)}>
-                      Refresh GPS
                     </Button>
                     {trip.status !== "Delayed" && (
                       <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => updateStatus(trip, "Delayed")}>
