@@ -2,15 +2,18 @@ import { useEffect, useState } from "react";
 import {
   canShowInstallPrompt,
   dismissPwaPrompt,
+  isInAppBrowser,
   isPwaDismissed,
-  isStandalone
+  isStandalone,
+  openInSystemBrowser
 } from "../utils/pwa";
 
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [dismissed, setDismissed] = useState(isPwaDismissed);
 
-  const canShow = canShowInstallPrompt() && !dismissed && Boolean(deferredPrompt);
+  const canShow = canShowInstallPrompt() && !dismissed;
+  const canNativeInstall = Boolean(deferredPrompt);
 
   useEffect(() => {
     if (isStandalone() || dismissed) return;
@@ -31,13 +34,21 @@ export function usePwaInstall() {
   }
 
   async function install() {
-    if (!deferredPrompt) return false;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    if (outcome === "accepted") dismiss();
-    return outcome === "accepted";
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      if (outcome === "accepted") dismiss();
+      return outcome === "accepted";
+    }
+
+    if (isInAppBrowser()) {
+      openInSystemBrowser();
+      return false;
+    }
+
+    return false;
   }
 
-  return { canShow, dismiss, install };
+  return { canShow, canNativeInstall, dismiss, install };
 }

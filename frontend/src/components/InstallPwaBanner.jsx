@@ -1,10 +1,13 @@
 import { Download, X } from "lucide-react";
 import { usePwaInstall } from "../hooks/usePwaInstall";
+import { isInAppBrowser } from "../utils/pwa";
 
 export function InstallPwaBanner() {
-  const { canShow, dismiss, install } = usePwaInstall();
+  const { canShow, canNativeInstall, dismiss, install } = usePwaInstall();
 
   if (!canShow) return null;
+
+  const inApp = isInAppBrowser();
 
   return (
     <div className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[100] mx-auto flex max-w-lg items-center gap-3 rounded-2xl border border-outline-variant/30 bg-surface-container-high p-3 shadow-xl md:inset-x-auto md:right-6">
@@ -17,7 +20,7 @@ export function InstallPwaBanner() {
         onClick={install}
         className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
       >
-        Install
+        {inApp && !canNativeInstall ? "Fur browser" : "Install"}
       </button>
       <button
         type="button"
