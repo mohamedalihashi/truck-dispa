@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { coordsFromPlaceName, estimateEta, shouldRecordPoint } from "../lib/somaliaGeo.js";
 import { prisma, withTransaction } from "../lib/prisma.js";
 import { ADMIN, DEMO_PASSWORD } from "../config/seed.js";
 import {
@@ -125,6 +126,12 @@ function mapTrip(row) {
     lastLocation:
       row.lastLat != null
         ? { lat: row.lastLat, lng: row.lastLng, updatedAt: row.lastLocationAt }
+        : null,
+    eta:
+      row.lastLat != null &&
+      row.destination &&
+      !["Delivered", "Cancelled"].includes(tripStatusToApi(row.status))
+        ? estimateEta(row.lastLat, row.lastLng, row.destination)
         : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -866,6 +873,13 @@ export const db = {
         orderBy: { createdAt: "desc" },
       });
 
+      const pickupCoords = coordsFromPlaceName(updated.pickup);
+      const locationFields = {
+        lastLat: pickupCoords.lat,
+        lastLng: pickupCoords.lng,
+        lastLocationAt: new Date()
+      };
+
       let tripId;
       if (existingTrip) {
         tripId = existingTrip.id;
@@ -878,6 +892,7 @@ export const db = {
             status: "Assigned",
             fare: tripFare,
             estimatedTime: tripEta,
+            ...locationFields
           },
         });
       } else {
@@ -896,9 +911,18 @@ export const db = {
             estimatedTime: tripEta,
             status: "Assigned",
             fare: tripFare,
+            ...locationFields
           },
         });
       }
+
+      await tx.tripLocationPoint.create({
+        data: {
+          tripId,
+          lat: pickupCoords.lat,
+          lng: pickupCoords.lng,
+        },
+      });
 
       await tx.truck.update({
         where: { id: truckId },
@@ -1164,10 +1188,64 @@ export const db = {
     }).catch(() => null);
 
     if (!trip) return null;
+
+    if (shouldRecordPoint(existing.lastLat, existing.lastLng, lat, lng)) {
+      await prisma.tripLocationPoint.create({
+        data: { tripId: id, lat, lng },
+      });
+
+      const extra = await prisma.tripLocationPoint.count({ where: { tripId: id } });
+      if (extra > 500) {
+        const stale = await prisma.tripLocationPoint.findMany({
+          where: { tripId: id },
+          orderBy: { recordedAt: "asc" },
+          take: extra - 500,
+          select: { id: true },
+        });
+        if (stale.length) {
+          await prisma.tripLocationPoint.deleteMany({
+            where: { id: { in: stale.map((row) => row.id) } },
+          });
+        }
+      }
+    }
+
+    const eta = trip.destination ? estimateEta(lat, lng, trip.destination) : null;
+
     return {
       id,
       lastLocation: { lat, lng, updatedAt: new Date().toISOString() },
+      eta,
     };
+  },
+
+  async listTripLocationHistory(tripId, { userId, role } = {}) {
+    const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) return null;
+
+    if (role === "customer" && trip.customerId !== userId) {
+      const error = new Error("Not allowed to view this trip route");
+      error.status = 403;
+      throw error;
+    }
+    if (role === "driver" && trip.driverId !== userId) {
+      const error = new Error("Not allowed to view this trip route");
+      error.status = 403;
+      throw error;
+    }
+
+    const points = await prisma.tripLocationPoint.findMany({
+      where: { tripId },
+      orderBy: { recordedAt: "asc" },
+      take: 300,
+      select: { lat: true, lng: true, recordedAt: true },
+    });
+
+    return points.map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+      at: point.recordedAt,
+    }));
   },
 
   async uploadTripProof(id, { deliveryProofUrl, signatureUrl }, { driverId } = {}) {

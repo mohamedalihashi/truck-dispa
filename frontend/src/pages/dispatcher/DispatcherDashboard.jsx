@@ -17,10 +17,9 @@ import {
   useEarningsSummary
 } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
-import { CANCELABLE_REQUEST_STATUSES, money, nextTripStatus } from "../../utils/helpers";
+import { CANCELABLE_REQUEST_STATUSES, LIVE_MAP_STATUSES, money, nextTripStatus } from "../../utils/helpers";
 import { FleetMap } from "../../components/map/FleetMap";
 import { TripFeedbackPanel } from "../../components/TripFeedbackPanel";
-import { randomSomaliaCoords } from "../../utils/geo";
 
 export function DispatcherDashboard() {
   const { user } = useAuth();
@@ -29,7 +28,7 @@ export function DispatcherDashboard() {
   const { data: earnings } = useEarningsSummary();
   const { data: requests } = useCargoRequests({ status: "Pending" });
   const { data: trucks } = useTrucks({ status: "Available" });
-  const { data: trips } = useTrips();
+  const { data: trips } = useTrips({}, { refetchInterval: 15_000 });
   const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 8 });
   const assign = useAssignCargo();
   const cancel = useCancelCargo();
@@ -38,9 +37,7 @@ export function DispatcherDashboard() {
   const [truckId, setTruckId] = useState("");
   const [error, setError] = useState("");
   const available = trucks?.data || [];
-  const live = (trips?.data || []).filter((t) =>
-    ["Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delayed"].includes(t.status)
-  );
+  const live = (trips?.data || []).filter((t) => LIVE_MAP_STATUSES.includes(t.status));
 
   async function assignNow() {
     setError("");
@@ -226,16 +223,11 @@ export function DispatcherDashboard() {
                     >
                       Advance
                     </Button>
-                    <Button
-                      variant="secondary"
-                      className="px-2 py-1 text-xs"
-                      onClick={() => {
-                        const { lat, lng } = randomSomaliaCoords();
-                        tripActions.shareLocation.mutate({ id: trip.id, lat, lng });
-                      }}
-                    >
-                      GPS
-                    </Button>
+                    <Link to="/dispatcher/tracking">
+                      <Button variant="secondary" className="px-2 py-1 text-xs">
+                        Track
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               ))}

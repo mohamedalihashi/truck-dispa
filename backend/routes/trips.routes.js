@@ -135,8 +135,21 @@ router.patch("/:id/location", requireRole("driver", "admin"), async (req, res, n
       options
     );
     if (!trip) return res.status(404).json({ message: "Trip not found" });
-    req.app.get("io").emit("location.updated", { tripId: trip.id, location: trip.lastLocation });
+    req.app.get("io").emit("location.updated", { tripId: trip.id, location: trip.lastLocation, eta: trip.eta });
     res.json(trip);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/locations", async (req, res, next) => {
+  try {
+    const points = await db.listTripLocationHistory(req.params.id, {
+      userId: req.user.sub,
+      role: req.user.role,
+    });
+    if (!points) return res.status(404).json({ message: "Trip not found" });
+    res.json({ tripId: req.params.id, points });
   } catch (error) {
     next(error);
   }

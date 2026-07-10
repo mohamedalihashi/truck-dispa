@@ -32,6 +32,15 @@ export function useTrips(params = {}, options = {}) {
   });
 }
 
+export function useTripRoute(tripId, options = {}) {
+  return useQuery({
+    queryKey: ["trip-route", tripId],
+    queryFn: () => api.getTripLocations(tripId),
+    enabled: Boolean(tripId),
+    ...options
+  });
+}
+
 export function useTripSummary(options = {}) {
   return useQuery({
     queryKey: ["trips-summary"],
@@ -153,6 +162,7 @@ export function useRealtimeInvalidation() {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
+      qc.invalidateQueries({ queryKey: ["trip-route"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -335,6 +345,7 @@ export function useCancelCargo() {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
+      qc.invalidateQueries({ queryKey: ["trip-route"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     }
@@ -349,6 +360,7 @@ export function useAssignCargo() {
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
       qc.invalidateQueries({ queryKey: ["trips"] });
+      qc.invalidateQueries({ queryKey: ["trip-route"] });
       qc.invalidateQueries({ queryKey: ["trucks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });

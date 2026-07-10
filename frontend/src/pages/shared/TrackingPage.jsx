@@ -5,10 +5,10 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { FleetMap } from "../../components/map/FleetMap";
-import { useTripActions, useTrips } from "../../hooks/useApi";
+import { useTripActions, useTripRoute, useTrips } from "../../hooks/useApi";
 import { useAuth } from "../../contexts/AuthContext";
-import { isRealtimeSocketEnabled } from "../../config/api";
 import { LIVE_MAP_STATUSES, nextTripStatus, roleHome } from "../../utils/helpers";
+import { matchSomaliaCity, resolveTripMapPosition } from "../../utils/geo";
 
 const LIVE_POLL_MS = 15_000;
 
@@ -23,7 +23,13 @@ export function TrackingPage() {
   const canManage = user.role === "dispatcher" || user.role === "admin";
   const base = roleHome(user.role);
   const live = (data?.data || []).filter((trip) => LIVE_MAP_STATUSES.includes(trip.status));
+  const liveGpsCount = live.filter((trip) => resolveTripMapPosition(trip).live).length;
   const selected = live.find((t) => t.id === selectedId) || live[0] || null;
+  const { data: routeData } = useTripRoute(selected?.id, { refetchInterval: LIVE_POLL_MS });
+  const routePoints = routeData?.points || [];
+  const destinationPoint = selected
+    ? matchSomaliaCity(selected.destination) || matchSomaliaCity(selected.pickup)
+    : null;
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "—";
 
   async function updateStatus(trip, status) {
@@ -58,11 +64,7 @@ export function TrackingPage() {
           Live · updates every {LIVE_POLL_MS / 1000}s
         </span>
         <span>Last sync: {lastUpdated}</span>
-        {!isRealtimeSocketEnabled() ? (
-          <span className="text-xs">Production polling mode</span>
-        ) : (
-          <span className="text-xs">Socket + polling</span>
-        )}
+        <span>{liveGpsCount} live GPS · {live.length - liveGpsCount} estimated on map</span>
       </div>
 
       <div className="grid grid-cols-12 gap-6">
@@ -89,11 +91,13 @@ export function TrackingPage() {
               </button>
             </div>
           </div>
-          <div className="relative min-h-[400px] flex-1">
+          <div className="relative min-h-[480px] flex-1">
             <FleetMap
               trips={live}
               selectedId={selected?.id}
               onSelect={setSelectedId}
+              routePoints={routePoints}
+              destinationPoint={destinationPoint}
               className="absolute inset-0 h-full w-full"
             />
             <div className="pointer-events-none absolute inset-x-4 bottom-4 grid gap-3 sm:grid-cols-2">
@@ -118,7 +122,7 @@ export function TrackingPage() {
                   <p className="mt-2 text-xs text-on-primary-container/80">
                     {trip.lastLocation
                       ? `${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
-                      : "Awaiting driver GPS"}
+                      : `${trip.pickup} area (estimated)`}
                   </p>
                 </button>
               ))}
@@ -164,6 +168,11 @@ export function TrackingPage() {
                 ) : (
                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Waiting for driver GPS signal</p>
                 )}
+                {trip.eta?.label ? (
+                  <p className="mt-1 text-xs font-medium text-secondary-container">
+                    ETA destination: {trip.eta.label} · {trip.eta.distanceKm} km
+                  </p>
+                ) : null}
                 {canManage && (
                   <div className="mt-3 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button className="px-2 py-1 text-xs" onClick={() => updateStatus(trip, nextTripStatus(trip.status))}>

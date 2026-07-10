@@ -83,6 +83,7 @@ export const api = {
   acceptTrip: (id) => apiClient.post(`/trips/${id}/accept`),
   rejectTrip: (id) => apiClient.post(`/trips/${id}/reject`),
   updateTripLocation: (id, payload) => apiClient.patch(`/trips/${id}/location`, payload),
+  getTripLocations: (id) => apiClient.get(`/trips/${id}/locations`),
   uploadProof: (id, formData) =>
     apiClient.post(`/trips/${id}/proof`, formData, {
       headers: { "Content-Type": "multipart/form-data" }

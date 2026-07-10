@@ -1,23 +1,49 @@
 import { useEffect, useMemo } from "react";
 import { APIProvider, Map, Marker, useMap } from "@vis.gl/react-google-maps";
-import { MapContainer, TileLayer, Marker as LeafletMarker, Popup, useMap as useLeafletMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker as LeafletMarker, Polyline, Popup, useMap as useLeafletMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { GOOGLE_MAPS_API_KEY, SOMALIA_BOUNDS, SOMALIA_CENTER, SOMALIA_ZOOM } from "../../constants/map";
+import { tripsToMarkers } from "../../utils/geo";
 
 const truckIcon = L.divIcon({
   className: "",
   html: `<div style="width:28px;height:28px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px">🚛</div>`,
   iconSize: [28, 28],
-  iconAnchor: [14, 14],
+  iconAnchor: [14, 14]
+});
+
+const estimatedIcon = L.divIcon({
+  className: "",
+  html: `<div style="width:26px;height:26px;border-radius:50%;background:#f97316;border:2px dashed #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:13px;opacity:.9">🚛</div>`,
+  iconSize: [26, 26],
+  iconAnchor: [13, 13]
 });
 
 const selectedIcon = L.divIcon({
   className: "",
   html: `<div style="width:34px;height:34px;border-radius:50%;background:#ea4335;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:16px">🚛</div>`,
   iconSize: [34, 34],
-  iconAnchor: [17, 17],
+  iconAnchor: [17, 17]
 });
+
+function LeafletResizeFix() {
+  const map = useLeafletMap();
+
+  useEffect(() => {
+    if (!map) return;
+    const fix = () => map.invalidateSize();
+    fix();
+    const timer = setTimeout(fix, 150);
+    window.addEventListener("resize", fix);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", fix);
+    };
+  }, [map]);
+
+  return null;
+}
 
 function GoogleFitBounds({ markers, selectedId }) {
   const map = useMap();
@@ -77,7 +103,48 @@ function LeafletFitBounds({ markers, selectedId }) {
   return null;
 }
 
-function GoogleFleetMap({ markers, selectedId, onSelect, className }) {
+const destIcon = L.divIcon({
+  className: "",
+  html: `<div style="width:24px;height:24px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:12px">📍</div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
+
+function GoogleRouteLayer({ routePoints, destinationPoint }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !window.google) return;
+    const overlays = [];
+
+    if (routePoints.length > 1) {
+      const line = new window.google.maps.Polyline({
+        path: routePoints.map((p) => ({ lat: p.lat, lng: p.lng })),
+        strokeColor: "#f97316",
+        strokeOpacity: 0.9,
+        strokeWeight: 4
+      });
+      line.setMap(map);
+      overlays.push(line);
+    }
+
+    if (destinationPoint) {
+      const marker = new window.google.maps.Marker({
+        position: { lat: destinationPoint.lat, lng: destinationPoint.lng },
+        map,
+        title: "Destination",
+        icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+      });
+      overlays.push(marker);
+    }
+
+    return () => overlays.forEach((item) => item.setMap(null));
+  }, [map, routePoints, destinationPoint]);
+
+  return null;
+}
+
+function GoogleFleetMap({ markers, selectedId, onSelect, routePoints, destinationPoint, className }) {
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
       <Map
@@ -90,22 +157,25 @@ function GoogleFleetMap({ markers, selectedId, onSelect, className }) {
         streetViewControl={false}
         restriction={{
           latLngBounds: SOMALIA_BOUNDS,
-          strictBounds: false,
+          strictBounds: false
         }}
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", minHeight: 360 }}
       >
         <GoogleFitBounds markers={markers} selectedId={selectedId} />
+        <GoogleRouteLayer routePoints={routePoints} destinationPoint={destinationPoint} />
         {markers.map((m) => (
           <Marker
             key={m.id}
             position={{ lat: m.lat, lng: m.lng }}
             title={m.label}
             onClick={() => onSelect?.(m.id)}
-            icon={
-              m.id === selectedId
-                ? { url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png" }
-                : { url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" }
-            }
+            icon={{
+              url: m.id === selectedId
+                ? "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                : m.live
+                  ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                  : "http://maps.google.com/mapfiles/ms/icons/orange-dot.png"
+            }}
           />
         ))}
       </Map>
@@ -113,31 +183,46 @@ function GoogleFleetMap({ markers, selectedId, onSelect, className }) {
   );
 }
 
-function LeafletFleetMap({ markers, selectedId, onSelect, className }) {
+function LeafletFleetMap({ markers, selectedId, onSelect, routePoints, destinationPoint, className }) {
+  const routePath = routePoints.map((p) => [p.lat, p.lng]);
+
   return (
     <MapContainer
       className={className}
       center={[SOMALIA_CENTER.lat, SOMALIA_CENTER.lng]}
       zoom={SOMALIA_ZOOM.country}
-      style={{ width: "100%", height: "100%" }}
+      style={{ width: "100%", height: "100%", minHeight: 360 }}
       scrollWheelZoom
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <LeafletResizeFix />
       <LeafletFitBounds markers={markers} selectedId={selectedId} />
+      {routePath.length > 1 ? (
+        <Polyline positions={routePath} pathOptions={{ color: "#f97316", weight: 4, opacity: 0.9 }} />
+      ) : null}
+      {destinationPoint ? (
+        <LeafletMarker position={[destinationPoint.lat, destinationPoint.lng]} icon={destIcon}>
+          <Popup>Destination</Popup>
+        </LeafletMarker>
+      ) : null}
       {markers.map((m) => (
         <LeafletMarker
           key={m.id}
           position={[m.lat, m.lng]}
-          icon={m.id === selectedId ? selectedIcon : truckIcon}
+          icon={
+            m.id === selectedId ? selectedIcon : m.live ? truckIcon : estimatedIcon
+          }
           eventHandlers={{ click: () => onSelect?.(m.id) }}
         >
           <Popup>
             <strong>{m.label}</strong>
             <br />
             {m.subtitle}
+            <br />
+            <span className="text-xs">{m.live ? "Live GPS" : "Estimated (pickup area)"}</span>
             {m.driver ? (
               <>
                 <br />
@@ -153,46 +238,60 @@ function LeafletFleetMap({ markers, selectedId, onSelect, className }) {
 
 /**
  * Interactive GPS fleet map centered on Somalia.
- * Uses Google Maps when VITE_GOOGLE_MAPS_API_KEY is set, otherwise OpenStreetMap.
+ * Uses OpenStreetMap by default; set VITE_MAP_PROVIDER=google to use Google Maps.
  */
-export function FleetMap({ trips = [], selectedId, onSelect, className = "h-full w-full" }) {
-  const markers = useMemo(
-    () =>
-      (trips || [])
-        .filter((t) => t.lastLocation?.lat != null && t.lastLocation?.lng != null)
-        .map((trip) => ({
-          id: trip.id,
-          lat: Number(trip.lastLocation.lat),
-          lng: Number(trip.lastLocation.lng),
-          label: trip.id,
-          subtitle: `${trip.pickup} → ${trip.destination}`,
-          driver: trip.driver,
-          status: trip.status,
-        })),
-    [trips]
-  );
-
-  const useGoogle = Boolean(GOOGLE_MAPS_API_KEY);
+export function FleetMap({
+  trips = [],
+  selectedId,
+  onSelect,
+  routePoints = [],
+  destinationPoint = null,
+  className = "h-full w-full"
+}) {
+  const markers = useMemo(() => tripsToMarkers(trips), [trips]);
+  const liveCount = markers.filter((m) => m.live).length;
+  const useGoogle =
+    import.meta.env.VITE_MAP_PROVIDER === "google" && Boolean(GOOGLE_MAPS_API_KEY);
 
   return (
-    <div className={`relative overflow-hidden ${className}`}>
+    <div className={`relative min-h-[360px] overflow-hidden ${className}`}>
       {useGoogle ? (
-        <GoogleFleetMap markers={markers} selectedId={selectedId} onSelect={onSelect} className="h-full w-full" />
+        <GoogleFleetMap
+          markers={markers}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          routePoints={routePoints}
+          destinationPoint={destinationPoint}
+          className="h-full w-full"
+        />
       ) : (
-        <LeafletFleetMap markers={markers} selectedId={selectedId} onSelect={onSelect} className="h-full w-full z-0" />
+        <LeafletFleetMap
+          markers={markers}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          routePoints={routePoints}
+          destinationPoint={destinationPoint}
+          className="h-full w-full z-0"
+        />
       )}
-      {!markers.length && (
+      {!markers.length ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-surface-container-low/60">
           <p className="rounded-lg bg-surface-container-lowest/90 px-4 py-2 text-sm text-on-surface-variant shadow">
-            No GPS signals yet — waiting for driver location
+            No active trips to show on the map
           </p>
         </div>
-      )}
-      {!useGoogle && (
+      ) : null}
+      {markers.length ? (
+        <div className="pointer-events-none absolute left-2 top-2 rounded bg-surface-container-lowest/90 px-2 py-1 text-[10px] text-on-surface-variant shadow">
+          {liveCount} live GPS · {markers.length - liveCount} estimated
+          {routePoints.length > 1 ? ` · route ${routePoints.length} pts` : ""}
+        </div>
+      ) : null}
+      {!useGoogle && markers.length ? (
         <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-surface-container-lowest/80 px-2 py-1 text-[10px] text-on-surface-variant">
           Somalia · OpenStreetMap
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
