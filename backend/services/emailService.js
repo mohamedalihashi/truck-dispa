@@ -28,6 +28,9 @@ async function getTransporter() {
       host: smtpHost(),
       port: smtpPort(),
       secure: process.env.SMTP_SECURE === "true",
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
       auth: {
         user: process.env.SMTP_USER,
         pass: smtpPass()

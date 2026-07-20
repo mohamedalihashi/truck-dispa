@@ -23,7 +23,12 @@ apiClient.interceptors.response.use(
 
     if (!message) {
       if (!error.response) {
-        message = "Cannot reach the server. Start the app with npm run dev and try again.";
+        const code = error.code || error.cause?.code;
+        if (code === "ECONNRESET" || code === "ECONNREFUSED" || error.message?.includes("Network Error")) {
+          message = "Server is restarting. Wait a few seconds and try again.";
+        } else {
+          message = "Cannot reach the server. Start the app with npm run dev and try again.";
+        }
       } else if (status === 503) {
         message = data?.message || "Database is busy. Please wait a moment and try again.";
       } else if (status === 500) {
