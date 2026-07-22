@@ -4,10 +4,11 @@ import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/
 import { db } from "../services/dbService.js";
 import { generateTempPassword } from "../lib/password.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
-import { fileToPublicUrl, upload } from "../lib/uploads.js";
+import { documentUpload, fileToPublicUrl } from "../lib/uploads.js";
 import { strongPasswordSchema } from "../lib/validation.js";
 
 const router = Router();
+const imageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const createSchema = z.object({
   name: z.string().min(2),
@@ -17,6 +18,26 @@ const createSchema = z.object({
   phone: z.string().optional(),
   driverLicense: z.string().trim().min(1).optional(),
   driverImageUrl: z.string().min(1).optional(),
+  dispatcherProfile: z.object({
+    dispatcherCode: z.string().trim().min(1),
+    nationalIdNumber: z.string().trim().min(1),
+    nationalIdFrontUrl: z.string().min(1),
+    nationalIdBackUrl: z.string().min(1),
+    profilePhotoUrl: z.string().min(1),
+    dateOfBirth: z.coerce.date(),
+    gender: z.enum(["Male", "Female", "Other"]),
+    city: z.string().trim().min(1),
+    address: z.string().trim().min(1),
+    cvUrl: z.string().min(1),
+    yearsOfExperience: z.coerce.number().int().min(0),
+    assignedRegion: z.string().trim().min(1),
+    workShift: z.string().trim().min(1),
+    emergencyContactName: z.string().trim().min(1),
+    emergencyContactPhone: z.string().trim().min(1),
+    commissionPercentage: z.coerce.number().min(0).max(100),
+    verificationStatus: z.enum(["Pending", "Verified", "Rejected"]).default("Pending"),
+    accountStatus: z.enum(["Active", "Inactive", "Suspended"]).default("Active")
+  }).optional(),
   truck: z
     .object({
       truckNumber: z.string().min(1),
@@ -65,11 +86,15 @@ router.get("/summary", requireRole("admin", "dispatcher"), async (_req, res, nex
 router.post(
   "/",
   requireRole("admin", "dispatcher"),
-  upload.fields([
+  documentUpload.fields([
     { name: "truckPhoto1", maxCount: 1 },
     { name: "truckPhoto2", maxCount: 1 },
     { name: "driverImage", maxCount: 1 },
-    { name: "truckDocuments", maxCount: 5 }
+    { name: "truckDocuments", maxCount: 5 },
+    { name: "nationalIdFront", maxCount: 1 },
+    { name: "nationalIdBack", maxCount: 1 },
+    { name: "dispatcherPhoto", maxCount: 1 },
+    { name: "dispatcherCv", maxCount: 1 }
   ]),
   async (req, res, next) => {
     try {
@@ -81,6 +106,10 @@ router.post(
       }
 
       const role = req.user.role === "dispatcher" ? "driver" : requestedRole;
+      const dispatcherFiles = [req.files?.nationalIdFront?.[0], req.files?.nationalIdBack?.[0], req.files?.dispatcherPhoto?.[0]];
+      if (role === "dispatcher" && dispatcherFiles.some((file) => !file || !imageTypes.has(file.mimetype))) {
+        return res.status(400).json({ message: "National ID front/back and profile photo must be JPEG, PNG, or WebP images" });
+      }
       const truckPayload =
         role === "driver"
           ? {
@@ -102,6 +131,13 @@ router.post(
         phone: req.body.phone || undefined,
         driverLicense: role === "driver" ? req.body.driverLicense : undefined,
         driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) : undefined,
+        dispatcherProfile: role === "dispatcher" ? {
+          ...req.body,
+          nationalIdFrontUrl: fileToPublicUrl(req.files?.nationalIdFront?.[0]),
+          nationalIdBackUrl: fileToPublicUrl(req.files?.nationalIdBack?.[0]),
+          profilePhotoUrl: fileToPublicUrl(req.files?.dispatcherPhoto?.[0]),
+          cvUrl: fileToPublicUrl(req.files?.dispatcherCv?.[0])
+        } : undefined,
         truck: truckPayload
       });
 
@@ -133,6 +169,7 @@ router.post(
         phone: parsed.data.phone,
         driverLicense: parsed.data.driverLicense,
         driverImageUrl: parsed.data.driverImageUrl,
+        dispatcherProfile: parsed.data.dispatcherProfile,
         truck: parsed.data.truck,
         mustChangePassword: true,
         actorId: req.user.sub

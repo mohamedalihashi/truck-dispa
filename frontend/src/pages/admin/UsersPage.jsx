@@ -25,6 +25,10 @@ export function UsersPage() {
   const [truckPhoto2, setTruckPhoto2] = useState(null);
   const [driverImage, setDriverImage] = useState(null);
   const [truckDocuments, setTruckDocuments] = useState([]);
+  const [nationalIdFront, setNationalIdFront] = useState(null);
+  const [nationalIdBack, setNationalIdBack] = useState(null);
+  const [dispatcherPhoto, setDispatcherPhoto] = useState(null);
+  const [dispatcherCv, setDispatcherCv] = useState(null);
   const [photo1Preview, setPhoto1Preview] = useState("");
   const [photo2Preview, setPhoto2Preview] = useState("");
   const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
@@ -43,6 +47,10 @@ export function UsersPage() {
     setTruckPhoto2(null);
     setDriverImage(null);
     setTruckDocuments([]);
+    setNationalIdFront(null);
+    setNationalIdBack(null);
+    setDispatcherPhoto(null);
+    setDispatcherCv(null);
     setPhoto1Preview("");
     setPhoto2Preview("");
     reset({ role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" });
@@ -101,6 +109,21 @@ export function UsersPage() {
           formData.append("truckPhoto2", truckPhoto2);
           formData.append("driverImage", driverImage);
           truckDocuments.forEach((file) => formData.append("truckDocuments", file));
+          result = await mutations.create.mutateAsync(formData);
+        } else if (createRole === "dispatcher") {
+          if (!nationalIdFront || !nationalIdBack || !dispatcherPhoto || !dispatcherCv) {
+            setError("National ID images, profile photo, and CV are required.");
+            return;
+          }
+          const formData = new FormData();
+          ["name", "email", "phone", "dispatcherCode", "nationalIdNumber", "dateOfBirth", "gender", "city", "address", "yearsOfExperience", "assignedRegion", "workShift", "emergencyContactName", "emergencyContactPhone", "commissionPercentage", "verificationStatus", "accountStatus"].forEach((key) => {
+            if (values[key] !== undefined && values[key] !== "") formData.append(key, values[key]);
+          });
+          formData.append("role", "dispatcher");
+          formData.append("nationalIdFront", nationalIdFront);
+          formData.append("nationalIdBack", nationalIdBack);
+          formData.append("dispatcherPhoto", dispatcherPhoto);
+          formData.append("dispatcherCv", dispatcherCv);
           result = await mutations.create.mutateAsync(formData);
         } else {
           const payload = {
@@ -379,6 +402,28 @@ export function UsersPage() {
                 </label>
               </>
             )}
+            {!editing && selectedRole === "dispatcher" && (
+              <>
+                <input className="stitch-input" placeholder="Dispatcher code" {...register("dispatcherCode", { required: true })} />
+                <input className="stitch-input" placeholder="National ID number" {...register("nationalIdNumber", { required: true })} />
+                <input className="stitch-input" type="date" {...register("dateOfBirth", { required: true })} />
+                <select className="stitch-input" {...register("gender", { required: true })}><option value="">Gender</option><option>Male</option><option>Female</option><option>Other</option></select>
+                <input className="stitch-input" placeholder="City" {...register("city", { required: true })} />
+                <input className="stitch-input" placeholder="Address" {...register("address", { required: true })} />
+                <input className="stitch-input" type="number" min="0" placeholder="Years of experience" {...register("yearsOfExperience", { required: true })} />
+                <input className="stitch-input" placeholder="Assigned region" {...register("assignedRegion", { required: true })} />
+                <input className="stitch-input" placeholder="Work shift" {...register("workShift", { required: true })} />
+                <input className="stitch-input" placeholder="Emergency contact name" {...register("emergencyContactName", { required: true })} />
+                <input className="stitch-input" placeholder="Emergency contact phone" {...register("emergencyContactPhone", { required: true })} />
+                <input className="stitch-input" type="number" min="0" max="100" step="0.01" placeholder="Commission %" {...register("commissionPercentage", { required: true })} />
+                <select className="stitch-input" {...register("verificationStatus")}><option>Pending</option><option>Verified</option><option>Rejected</option></select>
+                <select className="stitch-input" {...register("accountStatus")}><option>Active</option><option>Inactive</option><option>Suspended</option></select>
+                <FileField label="National ID front *" accept="image/jpeg,image/png,image/webp" onChange={setNationalIdFront} />
+                <FileField label="National ID back *" accept="image/jpeg,image/png,image/webp" onChange={setNationalIdBack} />
+                <FileField label="Profile photo *" accept="image/jpeg,image/png,image/webp" onChange={setDispatcherPhoto} />
+                <FileField label="CV *" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={setDispatcherCv} />
+              </>
+            )}
             {error && <p className="sm:col-span-2 text-sm text-red-600">{error}</p>}
             <div className="sm:col-span-2 flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
@@ -401,5 +446,14 @@ function Detail({ label, value, className = "" }) {
       <dt className="text-xs font-medium uppercase tracking-wider text-on-surface-variant">{label}</dt>
       <dd className="mt-1 font-semibold text-on-surface">{value}</dd>
     </div>
+  );
+}
+
+function FileField({ label, accept, onChange }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1.5 block font-medium text-on-surface-variant">{label}</span>
+      <input type="file" accept={accept} className="stitch-input w-full" onChange={(event) => onChange(event.target.files?.[0] || null)} required />
+    </label>
   );
 }

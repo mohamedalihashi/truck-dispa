@@ -42,6 +42,9 @@ function mapUser(row) {
     truckPhotoUrl1: row.truck?.photoUrl1 || null,
     truckPhotoUrl2: row.truck?.photoUrl2 || null,
     truckDocumentUrls: row.truck?.documentUrls || [],
+    dispatcherProfile: row.dispatcherProfile
+      ? { ...row.dispatcherProfile, commissionPercentage: Number(row.dispatcherProfile.commissionPercentage || 0) }
+      : null,
   };
 }
 
@@ -189,7 +192,7 @@ function mapNotification(row) {
 
 // ─── Include helpers ─────────────────────────────────────────────────
 
-const userInclude = { truck: true };
+const userInclude = { truck: true, dispatcherProfile: true };
 
 const cargoRequestInclude = {
   customer: true,
@@ -358,7 +361,7 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, role, phone, driverLicense, driverImageUrl, truck, mustChangePassword = false, actorId = null }) {
+  async createUser({ name, email, password, role, phone, driverLicense, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
     const passwordHash = await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
@@ -406,6 +409,22 @@ export const db = {
         });
       }
 
+      if (role === "dispatcher") {
+        if (!dispatcherProfile) {
+          const error = new Error("Dispatcher registration requires a complete dispatcher profile");
+          error.status = 400;
+          throw error;
+        }
+        await tx.dispatcherProfile.create({
+          data: {
+            ...dispatcherProfile,
+            userId: user.id,
+            verifiedBy: dispatcherProfile.verificationStatus === "Verified" ? actorId : null,
+            verifiedAt: dispatcherProfile.verificationStatus === "Verified" ? new Date() : null,
+          },
+        });
+      }
+
       await tx.auditLog.create({
         data: {
           actorId: actorId || user.id,
@@ -416,7 +435,8 @@ export const db = {
         },
       });
 
-      return mapUser({ ...user, truck: truckRow });
+      const created = await tx.user.findUnique({ where: { id: user.id }, include: userInclude });
+      return mapUser(created);
     });
   },
 

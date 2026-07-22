@@ -118,8 +118,44 @@ model User {
   auditLogs             AuditLog[]
   feedbackAsCustomer    TripFeedback[] @relation("FeedbackCustomer")
   feedbackAsDriver      TripFeedback[] @relation("FeedbackDriver")
+  dispatcherProfile     DispatcherProfile? @relation("DispatcherProfileOwner")
+  verifiedDispatcherProfiles DispatcherProfile[] @relation("DispatcherProfileVerifier")
 
   @@map("users")
+}
+
+model DispatcherProfile {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  dispatcherCode        String   @unique @map("dispatcher_code")
+  nationalIdNumber      String   @unique @map("national_id_number")
+  nationalIdFrontUrl    String   @map("national_id_front_url")
+  nationalIdBackUrl     String   @map("national_id_back_url")
+  profilePhotoUrl       String   @map("profile_photo_url")
+  dateOfBirth           DateTime @map("date_of_birth") @db.Date
+  gender                String
+  city                  String
+  address               String
+  cvUrl                 String   @map("cv_url")
+  yearsOfExperience     Int      @map("years_of_experience")
+  assignedRegion        String   @map("assigned_region")
+  workShift             String   @map("work_shift")
+  emergencyContactName  String   @map("emergency_contact_name")
+  emergencyContactPhone String   @map("emergency_contact_phone")
+  commissionPercentage  Decimal  @default(0) @map("commission_percentage") @db.Decimal(5, 2)
+  verificationStatus    String   @default("Pending") @map("verification_status")
+  verifiedBy            String?  @map("verified_by") @db.Uuid
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz()
+  accountStatus         String   @default("Active") @map("account_status")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user     User  @relation("DispatcherProfileOwner", fields: [userId], references: [id], onDelete: Cascade)
+  verifier User? @relation("DispatcherProfileVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  @@index([assignedRegion, accountStatus])
+  @@index([verificationStatus])
+  @@map("dispatcher_profiles")
 }
 
 model TruckType {
