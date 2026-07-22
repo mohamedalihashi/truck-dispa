@@ -65,7 +65,7 @@ router.get("/", requireRole("admin", "dispatcher"), async (req, res, next) => {
     }
     res.json(
       await db.listUsers({
-        role: req.query.role,
+        role: req.user.role === "dispatcher" ? "driver" : req.query.role,
         search: req.query.search,
         page: req.query.page,
         limit: req.query.limit
@@ -86,7 +86,7 @@ router.get("/summary", requireRole("admin", "dispatcher"), async (_req, res, nex
 
 router.post(
   "/",
-  requireRole("admin", "dispatcher"),
+  requireRole("admin"),
   documentUpload.fields([
     { name: "truckPhoto1", maxCount: 1 },
     { name: "truckPhoto2", maxCount: 1 },
@@ -191,6 +191,16 @@ router.post(
     }
   }
 );
+
+router.post("/:id/verify-driver", requireRole("admin", "dispatcher"), async (req, res, next) => {
+  try {
+    const user = await db.verifyDriver(req.params.id, req.user.sub);
+    if (!user) return res.status(404).json({ message: "Driver not found" });
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.patch("/:id", requireRole("admin"), async (req, res, next) => {
   try {

@@ -91,9 +91,9 @@ router.get("/feedback", requireRole("admin", "dispatcher", "driver"), async (req
   }
 });
 
-router.patch("/:id/status", requireRole("driver", "dispatcher", "admin", "customer"), validate(statusSchema), async (req, res, next) => {
+router.patch("/:id/status", requireRole("driver", "dispatcher", "admin"), validate(statusSchema), async (req, res, next) => {
   try {
-    const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
+    const options = { role: req.user.role, driverId: req.user.role === "driver" ? req.user.sub : undefined };
     const result = await db.updateTripStatus(req.params.id, req.body.status, req.user.sub, options);
     if (!result) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("trip.status.updated", result.trip);
@@ -106,7 +106,7 @@ router.patch("/:id/status", requireRole("driver", "dispatcher", "admin", "custom
 
 router.post("/:id/accept", requireRole("driver"), async (req, res, next) => {
   try {
-    const result = await db.updateTripStatus(req.params.id, "Accepted", req.user.sub, { driverId: req.user.sub });
+    const result = await db.updateTripStatus(req.params.id, "Accepted", req.user.sub, { driverId: req.user.sub, role: "driver" });
     if (!result) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("trip.status.updated", result.trip);
     res.json(result.trip);
@@ -126,7 +126,7 @@ router.post("/:id/reject", requireRole("driver"), async (req, res, next) => {
   }
 });
 
-router.patch("/:id/location", requireRole("driver", "admin"), async (req, res, next) => {
+router.patch("/:id/location", requireRole("driver"), async (req, res, next) => {
   try {
     const options = req.user.role === "driver" ? { driverId: req.user.sub } : {};
     const trip = await db.updateTripLocation(
@@ -155,7 +155,7 @@ router.get("/:id/locations", async (req, res, next) => {
   }
 });
 
-router.post("/:id/proof", requireRole("driver", "admin"), upload.single("proof"), async (req, res, next) => {
+router.post("/:id/proof", requireRole("driver"), upload.single("proof"), async (req, res, next) => {
   try {
     const deliveryProofUrl = req.file
       ? process.env.VERCEL
@@ -183,6 +183,16 @@ router.post("/:id/feedback", requireRole("customer"), validate(feedbackSchema), 
       req.app.get("io").emit("trip.feedback.submitted", { tripId: trip.id, feedback: trip.feedback });
     }
     res.status(201).json(trip);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/confirm-delivery", requireRole("customer"), async (req, res, next) => {
+  try {
+    const trip = await db.confirmTripDelivery(req.params.id, req.user.sub);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    res.json(trip);
   } catch (error) {
     next(error);
   }

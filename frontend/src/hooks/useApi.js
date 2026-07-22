@@ -121,10 +121,10 @@ export function useReports(period = "monthly") {
   });
 }
 
-export function usePayments() {
+export function usePayments(params = {}) {
   return useQuery({
-    queryKey: ["payments"],
-    queryFn: () => api.listPayments()
+    queryKey: ["payments", params],
+    queryFn: () => api.listPayments(params)
   });
 }
 
@@ -220,6 +220,10 @@ export function useUserMutations() {
     }),
     remove: useMutation({
       mutationFn: (id) => api.deleteUser(id),
+      onSuccess: invalidate
+    }),
+    verifyDriver: useMutation({
+      mutationFn: (id) => api.verifyDriver(id),
       onSuccess: invalidate
     })
   };
@@ -330,10 +334,11 @@ export function useEarningMutations() {
   };
 }
 
-export function useSettings() {
+export function useSettings(options = {}) {
   return useQuery({
     queryKey: ["settings"],
-    queryFn: () => api.getSettings()
+    queryFn: () => api.getSettings(),
+    ...options
   });
 }
 
@@ -405,11 +410,41 @@ export function useTripActions() {
   return {
     updateStatus: useMutation({
       mutationFn: ({ id, status }) => api.updateTripStatus(id, status),
-      onSuccess: invalidate
+      onMutate: async ({ id, status }) => {
+        await qc.cancelQueries({ queryKey: ["trips"] });
+        const snapshots = qc.getQueriesData({ queryKey: ["trips"] });
+        qc.setQueriesData({ queryKey: ["trips"] }, (current) => {
+          if (!current?.data) return current;
+          return {
+            ...current,
+            data: current.data.map((trip) => trip.id === id ? { ...trip, status } : trip)
+          };
+        });
+        return { snapshots };
+      },
+      onError: (_error, _variables, context) => {
+        context?.snapshots?.forEach(([key, value]) => qc.setQueryData(key, value));
+      },
+      onSettled: invalidate
     }),
     accept: useMutation({
       mutationFn: (id) => api.acceptTrip(id),
-      onSuccess: invalidate
+      onMutate: async (id) => {
+        await qc.cancelQueries({ queryKey: ["trips"] });
+        const snapshots = qc.getQueriesData({ queryKey: ["trips"] });
+        qc.setQueriesData({ queryKey: ["trips"] }, (current) => {
+          if (!current?.data) return current;
+          return {
+            ...current,
+            data: current.data.map((trip) => trip.id === id ? { ...trip, status: "Accepted" } : trip)
+          };
+        });
+        return { snapshots };
+      },
+      onError: (_error, _id, context) => {
+        context?.snapshots?.forEach(([key, value]) => qc.setQueryData(key, value));
+      },
+      onSettled: invalidate
     }),
     reject: useMutation({
       mutationFn: (id) => api.rejectTrip(id),

@@ -242,6 +242,7 @@ model Trip {
   fare             Decimal    @default(0) @db.Decimal(12, 2)
   deliveryProofUrl String?    @map("delivery_proof_url")
   signatureUrl     String?    @map("signature_url")
+  deliveryConfirmedAt DateTime? @map("delivery_confirmed_at") @db.Timestamptz()
   lastLat          Float?     @map("last_lat")
   lastLng          Float?     @map("last_lng")
   lastLocationAt   DateTime?  @map("last_location_at") @db.Timestamptz()

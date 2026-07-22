@@ -31,8 +31,15 @@ apiClient.interceptors.response.use(
         }
       } else if (status === 503) {
         message = data?.message || "Database is busy. Please wait a moment and try again.";
+      } else if (status === 502 || status === 504) {
+        message = "Server is restarting. Wait a few seconds and try again.";
       } else if (status === 500) {
-        message = "Server error. Wait a few seconds and try again.";
+        // Vite proxy often returns bare 500 HTML when the backend restarts mid-request
+        const looksLikeProxyDrop =
+          typeof data !== "object" || data === null || !data.message;
+        message = looksLikeProxyDrop
+          ? "Server is restarting. Wait a few seconds and try again."
+          : data.message;
       } else {
         message = error.message || "Request failed";
       }
@@ -72,6 +79,7 @@ export const api = {
   },
   updateUser: (id, payload) => apiClient.patch(`/users/${id}`, payload),
   deleteUser: (id) => apiClient.delete(`/users/${id}`),
+  verifyDriver: (id) => apiClient.post(`/users/${id}/verify-driver`),
   createCargoRequest: (payload) => apiClient.post("/cargo-requests", payload),
   updateCargoRequest: (id, payload) => apiClient.patch(`/cargo-requests/${id}`, payload),
   listCargoRequests: (params = {}) => apiClient.get("/cargo-requests", { params }),
@@ -106,7 +114,7 @@ export const api = {
   revenueReport: (period = "monthly") => apiClient.get("/reports/revenue", { params: { period } }),
   performanceReport: () => apiClient.get("/reports/performance"),
   shipmentsReport: () => apiClient.get("/reports/shipments"),
-  listPayments: () => apiClient.get("/admin/payments"),
+  listPayments: (params = {}) => apiClient.get("/admin/payments", { params }),
   createPayment: (payload) => apiClient.post("/admin/payments", payload),
   updatePayment: (id, payload) => apiClient.patch(`/admin/payments/${id}`, payload),
   updateCustomerPayment: (id, payload) => apiClient.patch(`/payments/${id}`, payload),

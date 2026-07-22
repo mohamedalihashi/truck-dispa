@@ -133,6 +133,7 @@ function mapTrip(row) {
     cargo: row.cargoRequest?.description || "Cargo",
     deliveryProofUrl: row.deliveryProofUrl,
     signatureUrl: row.signatureUrl,
+    deliveryConfirmedAt: row.deliveryConfirmedAt,
     lastLocation:
       row.lastLat != null
         ? { lat: row.lastLat, lng: row.lastLng, updatedAt: row.lastLocationAt }
@@ -375,6 +376,7 @@ export const db = {
           driverLicense: role === "driver" ? driverLicense : null,
           driverLicenseUrl: role === "driver" ? driverLicenseUrl : null,
           driverImageUrl: role === "driver" ? driverImageUrl : null,
+          status: role === "driver" ? "Pending Verification" : "Active",
           mustChangePassword: Boolean(mustChangePassword),
         },
       });
@@ -459,6 +461,19 @@ export const db = {
       await prisma.user.update({ where: { id }, data });
     }
     return this.findUserById(id);
+  },
+
+  async verifyDriver(id, actorId) {
+    return withTransaction(async (tx) => {
+      const driver = await tx.user.findFirst({ where: { id, role: "driver" } });
+      if (!driver) return null;
+      await tx.user.update({ where: { id }, data: { status: "Active" } });
+      await tx.auditLog.create({
+        data: { actorId, action: "driver.verified", entity: "users", entityId: id, meta: {} },
+      });
+      const updated = await tx.user.findUnique({ where: { id }, include: userInclude });
+      return mapUser(updated);
+    });
   },
 
   async deleteUser(id) {
@@ -586,9 +601,10 @@ export const db = {
 
   // ── Cargo Requests ───────────────────────────────────────────────
 
-  async listCargoRequests({ status, customerId, search, page = 1, limit = 20 } = {}) {
+  async listCargoRequests({ status, statuses, customerId, search, page = 1, limit = 20 } = {}) {
     const where = {};
     if (status) where.status = reqStatusToDb(status);
+    if (statuses?.length) where.status = { in: statuses.map(reqStatusToDb) };
     if (customerId) where.customerId = customerId;
     if (search) {
       where.OR = [
@@ -614,9 +630,10 @@ export const db = {
     return { data: data.map(mapCargoRequest), total, page: Number(page) };
   },
 
-  async cargoRequestSummary({ customerId } = {}) {
+  async cargoRequestSummary({ customerId, statuses } = {}) {
     const where = {};
     if (customerId) where.customerId = customerId;
+    if (statuses?.length) where.status = { in: statuses.map(reqStatusToDb) };
 
     const activeStatuses = ["Approved", "Assigned", "Accepted", "Arrived_Pickup", "Loaded", "In_Transit"];
 
@@ -718,7 +735,7 @@ export const db = {
     return mapCargoRequest(updated);
   },
 
-  async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, dispatcherId }) {
+  async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, driverId }) {
     return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
@@ -735,6 +752,19 @@ export const db = {
         throw error;
       }
 
+      const truck = await tx.truck.findUnique({ where: { driverId } });
+      if (!truck || truck.status !== "Available") {
+        const error = new Error("An available truck is required to submit a quote");
+        error.status = 400;
+        throw error;
+      }
+      const normalizeType = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (normalizeType(truck.truckType) !== normalizeType(existing.truckType)) {
+        const error = new Error("Your truck type does not match this cargo request");
+        error.status = 400;
+        throw error;
+      }
+
       await tx.cargoRequest.update({
         where: { id },
         data: {
@@ -744,7 +774,8 @@ export const db = {
           quoteNotes: quoteNotes?.trim() || null,
           quotedAt: new Date(),
           quoteVersion: (existing.quoteVersion || 0) + 1,
-          dispatcherId: dispatcherId || existing.dispatcherId,
+          driverId,
+          truckId: truck.id,
           customerDecisionAt: null,
           customerDecisionNote: null,
         },
@@ -760,7 +791,7 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId: dispatcherId,
+          actorId: driverId,
           action: "cargo.quote.sent",
           entity: "cargo_requests",
           entityId: id,
@@ -802,10 +833,10 @@ export const db = {
         },
       });
 
-      if (existing.dispatcherId) {
+      if (existing.driverId) {
         await tx.notification.create({
           data: {
-            userId: existing.dispatcherId,
+            userId: existing.driverId,
             type: "quote.accepted",
             message: `Customer approved quotation for ${id}`,
           },
@@ -853,10 +884,10 @@ export const db = {
         },
       });
 
-      if (existing.dispatcherId) {
+      if (existing.driverId) {
         await tx.notification.create({
           data: {
-            userId: existing.dispatcherId,
+            userId: existing.driverId,
             type: "quote.rejected",
             message: `Customer rejected quotation for ${id}${note ? `: ${note.trim()}` : ""}`,
           },
@@ -1140,11 +1171,30 @@ export const db = {
     return { total, active, pending, cancelled, delivered };
   },
 
-  async updateTripStatus(id, status, actorId, { driverId } = {}) {
+  async updateTripStatus(id, status, actorId, { driverId, role } = {}) {
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing) return null;
     if (driverId && existing.driverId !== driverId) {
       const error = new Error("Not allowed to update this trip");
+      error.status = 403;
+      throw error;
+    }
+
+    const currentStatus = tripStatusToApi(existing.status);
+    const driverNext = {
+      Assigned: "Accepted",
+      Accepted: "Arrived Pickup",
+      "Arrived Pickup": "Loaded",
+      Loaded: "In Transit",
+      "In Transit": "Delivered",
+    };
+    if (role === "driver" && driverNext[currentStatus] !== status) {
+      const error = new Error(`Driver must move from ${currentStatus} to ${driverNext[currentStatus] || "no further status"}`);
+      error.status = 400;
+      throw error;
+    }
+    if (role === "dispatcher" && !["Delayed", "Cancelled"].includes(status)) {
+      const error = new Error("Dispatchers can only mark trips Delayed or Cancelled");
       error.status = 403;
       throw error;
     }
@@ -1395,6 +1445,28 @@ export const db = {
         include: tripInclude,
       });
       return mapTrip(joined);
+    });
+  },
+
+  async confirmTripDelivery(tripId, customerId) {
+    return withTransaction(async (tx) => {
+      const trip = await tx.trip.findUnique({ where: { id: tripId } });
+      if (!trip) return null;
+      if (trip.customerId !== customerId) {
+        const error = new Error("Not allowed to confirm this delivery");
+        error.status = 403;
+        throw error;
+      }
+      if (tripStatusToApi(trip.status) !== "Delivered") {
+        const error = new Error("Only delivered trips can be confirmed");
+        error.status = 400;
+        throw error;
+      }
+      const updated = await tx.trip.update({ where: { id: tripId }, data: { deliveryConfirmedAt: new Date() } });
+      await tx.auditLog.create({
+        data: { actorId: customerId, action: "trip.delivery.confirmed", entity: "trips", entityId: tripId, meta: {} },
+      });
+      return mapTrip(updated);
     });
   },
 

@@ -22,6 +22,8 @@ import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { useAuth } from "../../contexts/AuthContext";
 import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES, money } from "../../utils/helpers";
 
+const normalizeTruckType = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
 export function RequestsPage() {
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
@@ -34,6 +36,9 @@ export function RequestsPage() {
   const { user } = useAuth();
   const { search } = useDashboardSearch();
   const showCreate = user.role === "admin" || user.role === "dispatcher";
+  const canQuote = user.role === "driver";
+  const canAssign = user.role === "admin";
+  const canEdit = user.role === "admin" || user.role === "dispatcher";
   const { data, isLoading } = useCargoRequests({ status: status || undefined, search: search || undefined });
   const { data: summary } = useCargoRequestSummary();
   const { data: trucks } = useTrucks();
@@ -44,6 +49,13 @@ export function RequestsPage() {
   const create = useCreateCargo();
   const update = useUpdateCargo();
   const fleet = trucks?.data || [];
+  const assignmentFleet = selected
+    ? [...fleet].sort((a, b) => {
+        const aMatch = normalizeTruckType(a.truckType || a.type) === normalizeTruckType(selected.truckType);
+        const bMatch = normalizeTruckType(b.truckType || b.type) === normalizeTruckType(selected.truckType);
+        return Number(bMatch) - Number(aMatch);
+      })
+    : fleet;
 
   const {
     register: registerCreate,
@@ -54,7 +66,7 @@ export function RequestsPage() {
     defaultValues: {
       pickup: "",
       destination: "",
-      truckType: "Box Truck",
+      truckType: "",
       weight: "1.0 tons",
       description: "",
       customerId: ""
@@ -93,7 +105,11 @@ export function RequestsPage() {
 
   function openAssign(row) {
     setSelected(row);
-    setTruckId(fleet.find((t) => t.status === "Available")?.id || fleet[0]?.id || "");
+    const requiredType = normalizeTruckType(row.truckType);
+    const matched = fleet.find(
+      (truck) => truck.status === "Available" && normalizeTruckType(truck.truckType || truck.type) === requiredType
+    );
+    setTruckId(matched?.id || "");
     setError("");
   }
 
@@ -255,17 +271,17 @@ export function RequestsPage() {
                     <button type="button" className="p-1 text-on-surface-variant" onClick={() => setViewing(row)} title="View">
                       <Eye size={16} />
                     </button>
-                    {row.status === "Pending" && (
+                    {canEdit && row.status === "Pending" && (
                       <button type="button" className="p-1 text-secondary-container" onClick={() => openEdit(row)} title="Edit">
                         <Pencil size={16} />
                       </button>
                     )}
-                    {(row.status === "Pending" || row.status === "Quote Rejected") && (
+                    {canQuote && (row.status === "Pending" || row.status === "Quote Rejected") && (
                       <Button className="px-2 py-1 text-xs" onClick={() => openQuote(row)}>
                         {row.status === "Quote Rejected" ? "Revise quote" : "Send quote"}
                       </Button>
                     )}
-                    {(row.status === "Approved" || row.status === "Assigned") && (
+                    {canAssign && (row.status === "Approved" || row.status === "Assigned") && (
                       <Button className="px-2 py-1 text-xs" onClick={() => openAssign(row)}>
                         {row.status === "Approved" ? "Assign driver" : "Reassign"}
                       </Button>
@@ -330,13 +346,22 @@ export function RequestsPage() {
               Approved quote: {money(selected.quotedPrice)} · ETA {selected.quotedEstimatedTime}
             </p>
           ) : null}
+          <p className="mb-2 text-sm font-medium text-on-surface-variant">
+            Required truck type: <strong className="text-on-surface">{selected.truckType}</strong>
+          </p>
           <select className="mb-4 w-full stitch-input" value={truckId} onChange={(e) => setTruckId(e.target.value)}>
-            {fleet.map((truck) => (
+            <option value="">Select a matching truck</option>
+            {assignmentFleet.map((truck) => (
               <option key={truck.id} value={truck.id}>
                 {truck.truckNumber} — {truck.driver} ({truck.status})
               </option>
             ))}
           </select>
+          {truckId ? (
+            <p className="mb-3 text-sm text-on-surface-variant">
+              Selected type: {fleet.find((truck) => truck.id === truckId)?.truckType || "Unknown"}
+            </p>
+          ) : null}
           {error && <p className="mb-3 text-sm text-error">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setSelected(null)}>Close</Button>
@@ -381,12 +406,7 @@ export function RequestsPage() {
           <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleEdit(onUpdate)}>
             <input className="stitch-input" placeholder="Pickup" {...registerEdit("pickup", { required: true })} />
             <input className="stitch-input" placeholder="Destination" {...registerEdit("destination", { required: true })} />
-            <select className="stitch-input" {...registerEdit("truckType")}>
-              <option>Box Truck</option>
-              <option>Flatbed</option>
-              <option>Refrigerated</option>
-              <option>Tanker</option>
-            </select>
+            <input className="stitch-input" placeholder="Write required truck type" {...registerEdit("truckType", { required: true })} />
             <input className="stitch-input" placeholder="Weight" {...registerEdit("weight", { required: true })} />
             <input className="stitch-input" placeholder="Sender" {...registerEdit("sender")} />
             <input className="stitch-input" placeholder="Receiver" {...registerEdit("receiver")} />
@@ -412,12 +432,7 @@ export function RequestsPage() {
             </select>
             <input className="stitch-input" placeholder="Pickup" {...registerCreate("pickup", { required: true })} />
             <input className="stitch-input" placeholder="Destination" {...registerCreate("destination", { required: true })} />
-            <select className="stitch-input" {...registerCreate("truckType")}>
-              <option>Box Truck</option>
-              <option>Flatbed</option>
-              <option>Refrigerated</option>
-              <option>Tanker</option>
-            </select>
+            <input className="stitch-input" placeholder="Write required truck type" {...registerCreate("truckType", { required: true })} />
             <input className="stitch-input" placeholder="Weight" {...registerCreate("weight", { required: true })} />
             <textarea className="stitch-input min-h-20 sm:col-span-2" placeholder="Description" {...registerCreate("description", { required: true })} />
             {error && <p className="sm:col-span-2 text-sm text-error">{error}</p>}

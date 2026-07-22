@@ -95,6 +95,7 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={["driver"]} />}>
         <Route path="/driver" element={<DashboardLayout />}>
+          <Route path="requests" element={<RequestsPage />} />
           <Route index element={<DriverDashboard />} />
           <Route path="jobs" element={<DriverJobsPage />} />
           <Route path="trips" element={<DriverJobsPage />} />

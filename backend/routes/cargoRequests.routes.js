@@ -9,7 +9,7 @@ const router = Router();
 const createSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
-  truckType: z.string().min(1),
+  truckType: z.string().trim().min(1),
   weight: z.string().min(1),
   description: z.string().min(1),
   receiver: z.string().optional(),
@@ -47,6 +47,7 @@ router.get("/", async (req, res, next) => {
       limit: req.query.limit
     };
     if (req.user.role === "customer") filters.customerId = req.user.sub;
+    if (req.user.role === "driver") filters.statuses = ["Pending", "Quote Rejected"];
     const result = await db.listCargoRequests(filters);
     res.json(result);
   } catch (error) {
@@ -58,6 +59,7 @@ router.get("/summary", async (req, res, next) => {
   try {
     const filters = {};
     if (req.user.role === "customer") filters.customerId = req.user.sub;
+    if (req.user.role === "driver") filters.statuses = ["Pending", "Quote Rejected"];
     res.json(await db.cargoRequestSummary(filters));
   } catch (error) {
     next(error);
@@ -105,7 +107,7 @@ router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(cr
 
 router.patch(
   "/:id/quote",
-  requireRole("dispatcher", "admin"),
+  requireRole("driver"),
   validate(quoteSchema),
   async (req, res, next) => {
     try {
@@ -113,7 +115,7 @@ router.patch(
         quotedPrice: req.body.quotedPrice,
         quotedEstimatedTime: req.body.quotedEstimatedTime,
         quoteNotes: req.body.quoteNotes,
-        dispatcherId: req.user.sub
+        driverId: req.user.sub
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("quote.sent", result.request);
@@ -161,14 +163,14 @@ router.post(
 
 router.patch(
   "/:id/assign",
-  requireRole("dispatcher", "admin"),
+  requireRole("admin"),
   validate(assignSchema),
   async (req, res, next) => {
     try {
       const result = await db.assignCargoRequest(req.params.id, {
         driverId: req.body.driverId,
         truckId: req.body.truckId,
-        dispatcherId: req.body.dispatcherId || req.user.sub
+        dispatcherId: req.body.dispatcherId
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("driver.assigned", result.request);

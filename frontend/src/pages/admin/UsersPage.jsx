@@ -164,9 +164,7 @@ export function UsersPage() {
             : "Manage admins, dispatchers, customers, and driver-truck accounts."
         }
         actions={
-          <Button onClick={openCreate}>
-            <Plus size={16} /> {isDispatcher ? "Add driver" : "Add user"}
-          </Button>
+          !isDispatcher ? <Button onClick={openCreate}><Plus size={16} /> Add user</Button> : null
         }
       />
 
@@ -256,6 +254,8 @@ export function UsersPage() {
                           <Trash2 size={16} />
                         </button>
                       </>
+                    ) : row.status !== "Active" ? (
+                      <Button className="px-2 py-1 text-xs" onClick={() => mutations.verifyDriver.mutate(row.id)}>Verify</Button>
                     ) : null}
                   </div>
                 )
