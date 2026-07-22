@@ -16,7 +16,14 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: strongPasswordSchema,
   role: z.enum(["customer", "driver"]),
-  phone: z.string().optional(),
+  phone: z.string().trim().min(1),
+  customerProfile: z.object({
+    customerType: z.enum(["Individual", "Business"]),
+    city: z.string().trim().min(1),
+    companyName: z.string().trim().optional(),
+    companyPhone: z.string().trim().optional(),
+    companyAddress: z.string().trim().optional()
+  }).optional(),
   driverLicense: z.string().trim().min(1).optional(),
   driverLicenseUrl: z.string().min(1).optional(),
   driverImageUrl: z.string().min(1).optional(),
@@ -31,6 +38,17 @@ const registerSchema = z.object({
       documentUrls: z.array(z.string().min(1)).min(1)
     })
     .optional()
+}).superRefine((data, ctx) => {
+  if (data.role !== "customer") return;
+  if (!data.customerProfile) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customerProfile"], message: "Customer profile is required" });
+    return;
+  }
+  if (data.customerProfile.customerType === "Business") {
+    for (const field of ["companyName", "companyPhone", "companyAddress"]) {
+      if (!data.customerProfile[field]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customerProfile", field], message: `${field} is required for business customers` });
+    }
+  }
 });
 
 const loginSchema = z.object({
@@ -114,6 +132,9 @@ router.post("/login", authLimiter, validate(loginSchema), async (req, res, next)
     }
     if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
       return res.status(423).json({ message: "Account temporarily locked. Try again later." });
+    }
+    if (user.status !== "Active") {
+      return res.status(403).json({ message: "Account is not active or is awaiting verification" });
     }
     const valid = await bcrypt.compare(req.body.password, user.passwordHash);
     if (!valid) {

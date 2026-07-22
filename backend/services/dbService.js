@@ -46,6 +46,7 @@ function mapUser(row) {
     dispatcherProfile: row.dispatcherProfile
       ? { ...row.dispatcherProfile, commissionPercentage: Number(row.dispatcherProfile.commissionPercentage || 0) }
       : null,
+    customerProfile: row.customerProfile || null,
   };
 }
 
@@ -194,7 +195,7 @@ function mapNotification(row) {
 
 // ─── Include helpers ─────────────────────────────────────────────────
 
-const userInclude = { truck: true, dispatcherProfile: true };
+const userInclude = { truck: true, dispatcherProfile: true, customerProfile: true };
 
 const cargoRequestInclude = {
   customer: true,
@@ -363,7 +364,7 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, role, phone, driverLicense, driverLicenseUrl, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
+  async createUser({ name, email, password, role, phone, customerProfile, driverLicense, driverLicenseUrl, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
     const passwordHash = await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
@@ -427,6 +428,10 @@ export const db = {
             verifiedAt: dispatcherProfile.verificationStatus === "Verified" ? new Date() : null,
           },
         });
+      }
+
+      if (role === "customer" && customerProfile) {
+        await tx.customerProfile.create({ data: { ...customerProfile, userId: user.id } });
       }
 
       await tx.auditLog.create({

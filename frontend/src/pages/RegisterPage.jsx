@@ -27,12 +27,15 @@ export function RegisterPage() {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { isSubmitting }
   } = useForm({
     defaultValues: {
-      code: ""
+      code: "",
+      customerType: "Individual"
     }
   });
+  const customerType = watch("customerType");
 
   useEffect(() => {
     const stored = loadRegisterVerification();
@@ -48,7 +51,14 @@ export function RegisterPage() {
       email: values.email,
       password: values.password,
       role: "customer",
-      phone: values.phone || undefined
+      phone: values.phone,
+      customerProfile: {
+        customerType: values.customerType,
+        city: values.city,
+        companyName: values.customerType === "Business" ? values.companyName : undefined,
+        companyPhone: values.customerType === "Business" ? values.companyPhone : undefined,
+        companyAddress: values.customerType === "Business" ? values.companyAddress : undefined
+      }
     };
   }
 
@@ -148,18 +158,32 @@ export function RegisterPage() {
 
               <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmitForm)}>
                 <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
-                <Field label="Phone"><input className="stitch-input" {...register("phone")} /></Field>
+                <Field label="Phone"><input className="stitch-input" type="tel" {...register("phone", { required: true })} /></Field>
                 <Field label="Email" className="sm:col-span-2">
                   <input className="stitch-input" type="email" {...register("email", { required: true })} />
                 </Field>
                 <Field label="Password" className="sm:col-span-2">
-                  <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
+                  <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 8 })} />
                 </Field>
+                <Field label="Customer type">
+                  <select className="stitch-input" {...register("customerType", { required: true })}>
+                    <option value="Individual">Individual</option>
+                    <option value="Business">Business</option>
+                  </select>
+                </Field>
+                <Field label="City"><input className="stitch-input" {...register("city", { required: true })} /></Field>
+                {customerType === "Business" ? (
+                  <>
+                    <Field label="Company name" className="sm:col-span-2"><input className="stitch-input" {...register("companyName", { required: true })} /></Field>
+                    <Field label="Company phone"><input className="stitch-input" type="tel" {...register("companyPhone", { required: true })} /></Field>
+                    <Field label="Company address"><input className="stitch-input" {...register("companyAddress", { required: true })} /></Field>
+                  </>
+                ) : null}
 
                 {error && <p className="sm:col-span-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
                 <div className="sm:col-span-2">
                   <Button className="w-full" disabled={isSubmitting}>
-                    {isSubmitting ? "Sending code…" : "Send verification code"}
+                    {isSubmitting ? "Creating account…" : "Create account"}
                   </Button>
                 </div>
               </form>
