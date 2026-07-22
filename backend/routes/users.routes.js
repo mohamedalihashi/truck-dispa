@@ -17,6 +17,7 @@ const createSchema = z.object({
   role: z.enum(["admin", "dispatcher", "customer", "driver"]),
   phone: z.string().optional(),
   driverLicense: z.string().trim().min(1).optional(),
+  driverLicenseUrl: z.string().min(1).optional(),
   driverImageUrl: z.string().min(1).optional(),
   dispatcherProfile: z.object({
     dispatcherCode: z.string().trim().min(1),
@@ -90,6 +91,7 @@ router.post(
     { name: "truckPhoto1", maxCount: 1 },
     { name: "truckPhoto2", maxCount: 1 },
     { name: "driverImage", maxCount: 1 },
+    { name: "driverLicenseDocument", maxCount: 1 },
     { name: "truckDocuments", maxCount: 5 },
     { name: "nationalIdFront", maxCount: 1 },
     { name: "nationalIdBack", maxCount: 1 },
@@ -130,6 +132,7 @@ router.post(
         role,
         phone: req.body.phone || undefined,
         driverLicense: role === "driver" ? req.body.driverLicense : undefined,
+        driverLicenseUrl: role === "driver" ? fileToPublicUrl(req.files?.driverLicenseDocument?.[0]) : undefined,
         driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) : undefined,
         dispatcherProfile: role === "dispatcher" ? {
           ...req.body,
@@ -153,8 +156,8 @@ router.post(
         return res.status(400).json({ message: "Two truck photos are required for driver registration" });
       }
 
-      if (parsed.data.role === "driver" && (!parsed.data.driverLicense || !parsed.data.driverImageUrl || !parsed.data.truck.documentUrls.length)) {
-        return res.status(400).json({ message: "Driver license, driver photo, and at least one truck document are required" });
+      if (parsed.data.role === "driver" && (!parsed.data.driverLicense || !parsed.data.driverLicenseUrl || !parsed.data.driverImageUrl || !parsed.data.truck.documentUrls.length)) {
+        return res.status(400).json({ message: "Driver license number/document, driver photo, and at least one truck document are required" });
       }
 
       const existing = await db.findUserByEmail(parsed.data.email);
@@ -168,6 +171,7 @@ router.post(
         role: parsed.data.role,
         phone: parsed.data.phone,
         driverLicense: parsed.data.driverLicense,
+        driverLicenseUrl: parsed.data.driverLicenseUrl,
         driverImageUrl: parsed.data.driverImageUrl,
         dispatcherProfile: parsed.data.dispatcherProfile,
         truck: parsed.data.truck,

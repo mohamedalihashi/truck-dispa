@@ -24,6 +24,7 @@ export function UsersPage() {
   const [truckPhoto1, setTruckPhoto1] = useState(null);
   const [truckPhoto2, setTruckPhoto2] = useState(null);
   const [driverImage, setDriverImage] = useState(null);
+  const [driverLicenseDocument, setDriverLicenseDocument] = useState(null);
   const [truckDocuments, setTruckDocuments] = useState([]);
   const [nationalIdFront, setNationalIdFront] = useState(null);
   const [nationalIdBack, setNationalIdBack] = useState(null);
@@ -46,6 +47,7 @@ export function UsersPage() {
     setTruckPhoto1(null);
     setTruckPhoto2(null);
     setDriverImage(null);
+    setDriverLicenseDocument(null);
     setTruckDocuments([]);
     setNationalIdFront(null);
     setNationalIdBack(null);
@@ -91,8 +93,8 @@ export function UsersPage() {
         let result;
         const createRole = isDispatcher ? "driver" : values.role;
         if (createRole === "driver") {
-          if (!truckPhoto1 || !truckPhoto2 || !driverImage || truckDocuments.length === 0) {
-            setError("Driver photo, two truck photos, and at least one truck document are required.");
+          if (!truckPhoto1 || !truckPhoto2 || !driverImage || !driverLicenseDocument || truckDocuments.length === 0) {
+            setError("Driver license document, driver photo, two truck photos, and at least one truck document are required.");
             return;
           }
           const formData = new FormData();
@@ -108,6 +110,7 @@ export function UsersPage() {
           formData.append("truckPhoto1", truckPhoto1);
           formData.append("truckPhoto2", truckPhoto2);
           formData.append("driverImage", driverImage);
+          formData.append("driverLicenseDocument", driverLicenseDocument);
           truckDocuments.forEach((file) => formData.append("truckDocuments", file));
           result = await mutations.create.mutateAsync(formData);
         } else if (createRole === "dispatcher") {
@@ -341,6 +344,7 @@ export function UsersPage() {
             {!editing && selectedRole === "driver" && (
               <>
                 <input className="stitch-input sm:col-span-2" placeholder="Driver license number" {...register("driverLicense", { required: true })} />
+                <FileField label="Driver license document *" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={setDriverLicenseDocument} />
                 <label className="sm:col-span-2 block text-sm">
                   <span className="mb-1.5 block font-medium text-on-surface-variant">Driver photo *</span>
                   <input

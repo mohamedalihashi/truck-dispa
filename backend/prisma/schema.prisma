@@ -96,6 +96,7 @@ model User {
   phone        String?
   avatarUrl    String?  @map("avatar_url")
   driverLicense String? @map("driver_license")
+  driverLicenseUrl String? @map("driver_license_url")
   driverImageUrl String? @map("driver_image_url")
   status       String   @default("Active")
   mustChangePassword Boolean @default(false) @map("must_change_password")

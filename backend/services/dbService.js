@@ -30,6 +30,7 @@ function mapUser(row) {
     phone: row.phone,
     avatarUrl: row.avatarUrl || null,
     driverLicense: row.driverLicense || null,
+    driverLicenseUrl: row.driverLicenseUrl || null,
     driverImageUrl: row.driverImageUrl || null,
     status: row.status,
     mustChangePassword: Boolean(row.mustChangePassword),
@@ -361,7 +362,7 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, role, phone, driverLicense, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
+  async createUser({ name, email, password, role, phone, driverLicense, driverLicenseUrl, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
     const passwordHash = await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
@@ -372,6 +373,7 @@ export const db = {
           role,
           phone: phone || null,
           driverLicense: role === "driver" ? driverLicense : null,
+          driverLicenseUrl: role === "driver" ? driverLicenseUrl : null,
           driverImageUrl: role === "driver" ? driverImageUrl : null,
           mustChangePassword: Boolean(mustChangePassword),
         },
@@ -389,8 +391,8 @@ export const db = {
           error.status = 400;
           throw error;
         }
-        if (!driverLicense || !driverImageUrl || !truck.documentUrls?.length) {
-          const error = new Error("Driver registration requires a license, driver photo, and truck documents");
+        if (!driverLicense || !driverLicenseUrl || !driverImageUrl || !truck.documentUrls?.length) {
+          const error = new Error("Driver registration requires a license number, license document, driver photo, and truck documents");
           error.status = 400;
           throw error;
         }

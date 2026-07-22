@@ -18,6 +18,7 @@ const registerSchema = z.object({
   role: z.enum(["customer", "driver"]),
   phone: z.string().optional(),
   driverLicense: z.string().trim().min(1).optional(),
+  driverLicenseUrl: z.string().min(1).optional(),
   driverImageUrl: z.string().min(1).optional(),
   truck: z
     .object({
@@ -67,8 +68,8 @@ router.post("/register", registrationLimiter, validate(registerSchema), async (r
     if (req.body.role === "driver" && !req.body.truck) {
       return res.status(400).json({ message: "Driver accounts require a truck" });
     }
-    if (req.body.role === "driver" && (!req.body.driverLicense || !req.body.driverImageUrl)) {
-      return res.status(400).json({ message: "Driver license and driver photo are required" });
+    if (req.body.role === "driver" && (!req.body.driverLicense || !req.body.driverLicenseUrl || !req.body.driverImageUrl)) {
+      return res.status(400).json({ message: "Driver license number/document and driver photo are required" });
     }
     const existing = await db.findUserByEmail(req.body.email);
     if (existing) return res.status(409).json({ message: "Email already registered" });
