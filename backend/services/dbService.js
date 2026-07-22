@@ -29,6 +29,8 @@ function mapUser(row) {
     role: row.role,
     phone: row.phone,
     avatarUrl: row.avatarUrl || null,
+    driverLicense: row.driverLicense || null,
+    driverImageUrl: row.driverImageUrl || null,
     status: row.status,
     mustChangePassword: Boolean(row.mustChangePassword),
     createdAt: row.createdAt,
@@ -37,6 +39,9 @@ function mapUser(row) {
     truckNumber: row.truck?.truckNumber || null,
     plateNumber: row.truck?.plateNumber || null,
     truckStatus: row.truck?.status || null,
+    truckPhotoUrl1: row.truck?.photoUrl1 || null,
+    truckPhotoUrl2: row.truck?.photoUrl2 || null,
+    truckDocumentUrls: row.truck?.documentUrls || [],
   };
 }
 
@@ -54,6 +59,7 @@ function mapTruck(row) {
     status: row.status,
     photoUrl1: row.photoUrl1 || null,
     photoUrl2: row.photoUrl2 || null,
+    documentUrls: row.documentUrls || [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -352,7 +358,7 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, role, phone, truck, mustChangePassword = false, actorId = null }) {
+  async createUser({ name, email, password, role, phone, driverLicense, driverImageUrl, truck, mustChangePassword = false, actorId = null }) {
     const passwordHash = await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
@@ -362,6 +368,8 @@ export const db = {
           passwordHash,
           role,
           phone: phone || null,
+          driverLicense: role === "driver" ? driverLicense : null,
+          driverImageUrl: role === "driver" ? driverImageUrl : null,
           mustChangePassword: Boolean(mustChangePassword),
         },
       });
@@ -378,6 +386,11 @@ export const db = {
           error.status = 400;
           throw error;
         }
+        if (!driverLicense || !driverImageUrl || !truck.documentUrls?.length) {
+          const error = new Error("Driver registration requires a license, driver photo, and truck documents");
+          error.status = 400;
+          throw error;
+        }
         truckRow = await tx.truck.create({
           data: {
             truckNumber: truck.truckNumber,
@@ -386,6 +399,7 @@ export const db = {
             truckType: truck.truckType,
             photoUrl1: truck.photoUrl1,
             photoUrl2: truck.photoUrl2,
+            documentUrls: truck.documentUrls,
             driverId: user.id,
             status: "Available",
           },

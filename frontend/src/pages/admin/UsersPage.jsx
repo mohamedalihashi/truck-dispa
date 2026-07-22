@@ -23,13 +23,15 @@ export function UsersPage() {
   const [createInfo, setCreateInfo] = useState("");
   const [truckPhoto1, setTruckPhoto1] = useState(null);
   const [truckPhoto2, setTruckPhoto2] = useState(null);
+  const [driverImage, setDriverImage] = useState(null);
+  const [truckDocuments, setTruckDocuments] = useState([]);
   const [photo1Preview, setPhoto1Preview] = useState("");
   const [photo2Preview, setPhoto2Preview] = useState("");
   const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
   const { data: summary } = useUserSummary();
   const mutations = useUserMutations();
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { role: isDispatcher ? "driver" : "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" }
+    defaultValues: { role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" }
   });
   const selectedRole = isDispatcher ? "driver" : watch("role");
 
@@ -39,9 +41,11 @@ export function UsersPage() {
     setCreateInfo("");
     setTruckPhoto1(null);
     setTruckPhoto2(null);
+    setDriverImage(null);
+    setTruckDocuments([]);
     setPhoto1Preview("");
     setPhoto2Preview("");
-    reset({ role: isDispatcher ? "driver" : "customer", truckType: "Box Truck", capacity: "12 tons", status: "Active" });
+    reset({ role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" });
     setOpen(true);
   }
 
@@ -79,8 +83,8 @@ export function UsersPage() {
         let result;
         const createRole = isDispatcher ? "driver" : values.role;
         if (createRole === "driver") {
-          if (!truckPhoto1 || !truckPhoto2) {
-            setError("Two truck photos are required for driver registration.");
+          if (!truckPhoto1 || !truckPhoto2 || !driverImage || truckDocuments.length === 0) {
+            setError("Driver photo, two truck photos, and at least one truck document are required.");
             return;
           }
           const formData = new FormData();
@@ -88,12 +92,15 @@ export function UsersPage() {
           formData.append("email", values.email);
           formData.append("role", createRole);
           if (values.phone) formData.append("phone", values.phone);
+          formData.append("driverLicense", values.driverLicense);
           formData.append("truckNumber", values.truckNumber);
           formData.append("plateNumber", values.plateNumber);
           formData.append("capacity", values.capacity);
           formData.append("truckType", values.truckType);
           formData.append("truckPhoto1", truckPhoto1);
           formData.append("truckPhoto2", truckPhoto2);
+          formData.append("driverImage", driverImage);
+          truckDocuments.forEach((file) => formData.append("truckDocuments", file));
           result = await mutations.create.mutateAsync(formData);
         } else {
           const payload = {
@@ -106,7 +113,6 @@ export function UsersPage() {
         }
         const parts = [result.message || "User created. Credentials sent by email."];
         if (result.devPassword) parts.push(`Temp password: ${result.devPassword}`);
-        if (result.devCode) parts.push(`Login OTP: ${result.devCode}`);
         setCreateInfo(parts.join(" "));
       }
       setOpen(false);
@@ -250,6 +256,12 @@ export function UsersPage() {
             <Detail label="Truck type" value={viewing.truckType || "—"} />
             <Detail label="Capacity" value={viewing.capacity || "—"} />
             <Detail label="Truck status" value={viewing.truckStatus ? <StatusBadge status={viewing.truckStatus} /> : "—"} />
+            {viewing.role === "driver" ? (
+              <>
+                <Detail label="Driver license" value={viewing.driverLicense || "—"} />
+                <Detail label="Truck documents" value={`${viewing.truckDocumentUrls?.length || 0} uploaded`} />
+              </>
+            ) : null}
             <Detail
               label="Joined"
               value={viewing.createdAt ? new Date(viewing.createdAt).toLocaleString() : "—"}
@@ -284,7 +296,7 @@ export function UsersPage() {
               />
             ) : (
               <p className="sm:col-span-2 rounded-lg bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
-                A temporary password and login OTP will be emailed automatically. The driver must set a new password on first sign-in.
+                A temporary password will be emailed automatically. The driver must set a new password on first sign-in.
               </p>
             )}
             {!isDispatcher ? (
@@ -292,7 +304,7 @@ export function UsersPage() {
                 <option value="customer">Customer</option>
                 <option value="dispatcher">Dispatcher</option>
                 <option value="driver">Driver</option>
-                <option value="admin">Admin</option>
+                {editing?.role === "admin" ? <option value="admin">Admin</option> : null}
               </select>
             ) : (
               <input type="hidden" {...register("role")} value="driver" />
@@ -305,14 +317,21 @@ export function UsersPage() {
             )}
             {!editing && selectedRole === "driver" && (
               <>
+                <input className="stitch-input sm:col-span-2" placeholder="Driver license number" {...register("driverLicense", { required: true })} />
+                <label className="sm:col-span-2 block text-sm">
+                  <span className="mb-1.5 block font-medium text-on-surface-variant">Driver photo *</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="stitch-input w-full"
+                    onChange={(e) => setDriverImage(e.target.files?.[0] || null)}
+                    required
+                  />
+                </label>
                 <input className="stitch-input" placeholder="Truck number" {...register("truckNumber", { required: true })} />
                 <input className="stitch-input" placeholder="Plate number" {...register("plateNumber", { required: true })} />
                 <input className="stitch-input" placeholder="Capacity" {...register("capacity", { required: true })} />
-                <select className="stitch-input" {...register("truckType")}>
-                  <option>Box Truck</option>
-                  <option>Flatbed</option>
-                  <option>Refrigerated</option>
-                </select>
+                <input className="stitch-input" placeholder="Write truck type" {...register("truckType", { required: true })} />
                 <label className="sm:col-span-2 block text-sm">
                   <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo 1 *</span>
                   <input
@@ -346,6 +365,17 @@ export function UsersPage() {
                   {photo2Preview ? (
                     <img src={photo2Preview} alt="Truck preview 2" className="mt-2 h-24 w-full rounded-lg object-cover" />
                   ) : null}
+                </label>
+                <label className="sm:col-span-2 block text-sm">
+                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck documents * (up to 5 images)</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    className="stitch-input w-full"
+                    onChange={(e) => setTruckDocuments(Array.from(e.target.files || []).slice(0, 5))}
+                    required
+                  />
                 </label>
               </>
             )}

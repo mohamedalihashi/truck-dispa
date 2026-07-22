@@ -15,6 +15,8 @@ const createSchema = z.object({
   password: strongPasswordSchema.optional(),
   role: z.enum(["admin", "dispatcher", "customer", "driver"]),
   phone: z.string().optional(),
+  driverLicense: z.string().trim().min(1).optional(),
+  driverImageUrl: z.string().min(1).optional(),
   truck: z
     .object({
       truckNumber: z.string().min(1),
@@ -22,7 +24,8 @@ const createSchema = z.object({
       capacity: z.string().min(1),
       truckType: z.string().trim().min(1),
       photoUrl1: z.string().min(1),
-      photoUrl2: z.string().min(1)
+      photoUrl2: z.string().min(1),
+      documentUrls: z.array(z.string().min(1)).min(1)
     })
     .optional()
 });
@@ -64,7 +67,9 @@ router.post(
   requireRole("admin", "dispatcher"),
   upload.fields([
     { name: "truckPhoto1", maxCount: 1 },
-    { name: "truckPhoto2", maxCount: 1 }
+    { name: "truckPhoto2", maxCount: 1 },
+    { name: "driverImage", maxCount: 1 },
+    { name: "truckDocuments", maxCount: 5 }
   ]),
   async (req, res, next) => {
     try {
@@ -84,7 +89,8 @@ router.post(
               capacity: req.body.capacity,
               truckType: req.body.truckType,
               photoUrl1: fileToPublicUrl(req.files?.truckPhoto1?.[0]),
-              photoUrl2: fileToPublicUrl(req.files?.truckPhoto2?.[0])
+              photoUrl2: fileToPublicUrl(req.files?.truckPhoto2?.[0]),
+              documentUrls: (req.files?.truckDocuments || []).map(fileToPublicUrl)
             }
           : undefined;
 
@@ -94,6 +100,8 @@ router.post(
         password: req.body.password || undefined,
         role,
         phone: req.body.phone || undefined,
+        driverLicense: role === "driver" ? req.body.driverLicense : undefined,
+        driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) : undefined,
         truck: truckPayload
       });
 
@@ -109,6 +117,10 @@ router.post(
         return res.status(400).json({ message: "Two truck photos are required for driver registration" });
       }
 
+      if (parsed.data.role === "driver" && (!parsed.data.driverLicense || !parsed.data.driverImageUrl || !parsed.data.truck.documentUrls.length)) {
+        return res.status(400).json({ message: "Driver license, driver photo, and at least one truck document are required" });
+      }
+
       const existing = await db.findUserByEmail(parsed.data.email);
       if (existing) return res.status(409).json({ message: "Email already registered" });
 
@@ -119,6 +131,8 @@ router.post(
         password: tempPassword,
         role: parsed.data.role,
         phone: parsed.data.phone,
+        driverLicense: parsed.data.driverLicense,
+        driverImageUrl: parsed.data.driverImageUrl,
         truck: parsed.data.truck,
         mustChangePassword: true,
         actorId: req.user.sub

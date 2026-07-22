@@ -95,6 +95,8 @@ model User {
   role         UserRole
   phone        String?
   avatarUrl    String?  @map("avatar_url")
+  driverLicense String? @map("driver_license")
+  driverImageUrl String? @map("driver_image_url")
   status       String   @default("Active")
   mustChangePassword Boolean @default(false) @map("must_change_password")
   failedLoginAttempts Int @default(0) @map("failed_login_attempts")
@@ -137,6 +139,7 @@ model Truck {
   truckType   String      @map("truck_type")
   photoUrl1   String?     @map("photo_url_1")
   photoUrl2   String?     @map("photo_url_2")
+  documentUrls String[]   @default([]) @map("document_urls")
   driverId    String      @unique @map("driver_id") @db.Uuid
   status      TruckStatus @default(Available)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
