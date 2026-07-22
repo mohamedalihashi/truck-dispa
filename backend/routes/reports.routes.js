@@ -7,9 +7,9 @@ const router = Router();
 router.use(requireAuth);
 router.use(requirePasswordChanged);
 
-router.get("/dashboard", async (_req, res, next) => {
+router.get("/dashboard", async (req, res, next) => {
   try {
-    res.json(await db.dashboardStats());
+    res.json(await db.dashboardStats({ role: req.user.role, userId: req.user.sub }));
   } catch (error) {
     next(error);
   }

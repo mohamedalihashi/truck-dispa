@@ -1572,34 +1572,38 @@ export const db = {
 
   // ── Dashboard & Reports ──────────────────────────────────────────
 
-  async dashboardStats() {
+  async dashboardStats({ role = "admin", userId } = {}) {
     const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+    const cargoWhere = role === "customer" ? { customerId: userId } : role === "driver" ? { driverId: userId } : role === "dispatcher" ? { dispatcherId: userId } : {};
+    const tripWhere = role === "customer" ? { customerId: userId } : role === "driver" ? { driverId: userId } : role === "dispatcher" ? { dispatcherId: userId } : {};
+    const paymentWhere = role === "customer" ? { customerId: userId } : role === "admin" ? {} : { id: "__none__" };
+    const showGlobalUsers = role === "admin";
 
     const [totalCustomers, totalDrivers, totalDispatchers] = await Promise.all([
-      prisma.user.count({ where: { role: "customer" } }),
-      prisma.user.count({ where: { role: "driver" } }),
-      prisma.user.count({ where: { role: "dispatcher" } }),
+      showGlobalUsers ? prisma.user.count({ where: { role: "customer" } }) : 0,
+      showGlobalUsers ? prisma.user.count({ where: { role: "driver" } }) : 0,
+      showGlobalUsers ? prisma.user.count({ where: { role: "dispatcher" } }) : 0,
     ]);
 
     const [totalUsers, totalTrucks, pendingOrders] = await Promise.all([
-      prisma.user.count(),
-      prisma.truck.count(),
-      prisma.cargoRequest.count({ where: { status: "Pending" } }),
+      showGlobalUsers ? prisma.user.count() : 0,
+      role === "driver" ? prisma.truck.count({ where: { driverId: userId } }) : showGlobalUsers ? prisma.truck.count() : 0,
+      prisma.cargoRequest.count({ where: { ...cargoWhere, status: "Pending" } }),
     ]);
 
     const [completedOrders, liveTrips, inTransit] = await Promise.all([
-      prisma.trip.count({ where: { status: "Delivered" } }),
+      prisma.trip.count({ where: { ...tripWhere, status: "Delivered" } }),
       prisma.trip.count({
-        where: { status: { in: ["In_Transit", "Loaded", "Accepted", "Arrived_Pickup"] } },
+        where: { ...tripWhere, status: { in: ["In_Transit", "Loaded", "Accepted", "Arrived_Pickup"] } },
       }),
-      prisma.trip.count({ where: { status: "In_Transit" } }),
+      prisma.trip.count({ where: { ...tripWhere, status: "In_Transit" } }),
     ]);
 
     const [todaysOrders, availableTrucks, revenueResult] = await Promise.all([
-      prisma.cargoRequest.count({ where: { createdAt: { gte: startOfDay } } }),
-      prisma.truck.count({ where: { status: "Available" } }),
+      prisma.cargoRequest.count({ where: { ...cargoWhere, createdAt: { gte: startOfDay } } }),
+      role === "driver" ? prisma.truck.count({ where: { driverId: userId, status: "Available" } }) : showGlobalUsers ? prisma.truck.count({ where: { status: "Available" } }) : 0,
       prisma.payment.aggregate({
-        where: { status: { in: ["Paid", "Partial"] } },
+        where: { ...paymentWhere, status: { in: ["Paid", "Partial"] } },
         _sum: { amountPaid: true },
       }),
     ]);
