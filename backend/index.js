@@ -34,27 +34,21 @@ io.on("connection", (socket) => {
   });
 });
 
-try {
-  await connectDatabase();
-} catch (error) {
-  console.error("Failed to connect to PostgreSQL:", error.message);
-  process.exit(1);
-}
-
 server.listen(port, () => {
   console.log(`TruckDispatch API running on http://127.0.0.1:${port}`);
 });
 
 void (async () => {
   try {
-    const seedResult = await db.seedIfEmpty();
-    if (seedResult.seeded) {
-      console.log(`PostgreSQL seeded. Demo password: ${seedResult.demoPassword}`);
+    await connectDatabase();
+    if (process.env.NODE_ENV !== "production") {
+      const seedResult = await db.seedIfEmpty();
+      if (seedResult.seeded) console.log("Development demo data seeded.");
+      await db.ensureAdmin();
+      console.log("Development admin account is ready.");
     }
-    const admin = await db.ensureAdmin();
-    console.log(`Admin account ready: ${admin.email} (password: ${admin.password})`);
   } catch (error) {
-    console.warn("Database seed skipped:", error.message);
+    console.warn("Database startup connection pending; requests will retry automatically:", error.message);
   }
 })();
 

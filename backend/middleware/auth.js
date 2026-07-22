@@ -1,6 +1,12 @@
 import jwt from "jsonwebtoken";
 
-const jwtSecret = process.env.JWT_SECRET || "local-dev-secret-change-me";
+const jwtSecret = process.env.JWT_SECRET;
+
+if (!jwtSecret && process.env.NODE_ENV === "production") {
+  throw new Error("JWT_SECRET is required when NODE_ENV=production");
+}
+
+const effectiveJwtSecret = jwtSecret || "local-development-only-secret";
 
 export function signToken(user) {
   const payload = {
@@ -9,7 +15,7 @@ export function signToken(user) {
     email: user.email
   };
   if (user.mustChangePassword) payload.mcp = true;
-  return jwt.sign(payload, jwtSecret, { expiresIn: "8h" });
+  return jwt.sign(payload, effectiveJwtSecret, { expiresIn: "8h" });
 }
 
 export function requireAuth(req, res, next) {
@@ -20,7 +26,7 @@ export function requireAuth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, jwtSecret);
+    req.user = jwt.verify(token, effectiveJwtSecret);
     next();
   } catch {
     res.status(401).json({ message: "Invalid or expired token" });

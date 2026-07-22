@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireAuth, signToken, requirePasswordChanged } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
-import { sendVerificationEmail, verificationPayload } from "../services/emailService.js";
+import { dispatchVerificationEmail, verificationPayload } from "../services/emailService.js";
 import { fileToPublicUrl, upload } from "../lib/uploads.js";
 
 const router = Router();
@@ -13,14 +13,14 @@ const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(["admin", "dispatcher", "customer", "driver"]),
+  role: z.enum(["customer", "driver"]),
   phone: z.string().optional(),
   truck: z
     .object({
       truckNumber: z.string().min(1),
       plateNumber: z.string().min(1),
       capacity: z.string().min(1),
-      truckType: z.string().min(1),
+      truckType: z.string().trim().min(1),
       photoUrl1: z.string().min(1),
       photoUrl2: z.string().min(1)
     })
@@ -65,13 +65,8 @@ router.post("/register", validate(registerSchema), async (req, res, next) => {
     const existing = await db.findUserByEmail(req.body.email);
     if (existing) return res.status(409).json({ message: "Email already registered" });
 
-    const { code } = await db.createVerificationCode({
-      email: req.body.email,
-      purpose: "register",
-      payload: req.body
-    });
-    const emailResult = await sendVerificationEmail(req.body.email, code, "register");
-    res.status(202).json(verificationResponse(req.body.email, emailResult));
+    const user = await db.createUser(req.body);
+    res.status(201).json({ user, token: signToken(user) });
   } catch (error) {
     if (isDbBusyError(error)) return dbBusyResponse(res);
     next(error);
@@ -111,12 +106,8 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
     const valid = await bcrypt.compare(req.body.password, user.passwordHash);
     if (!valid) return res.status(401).json({ message: "Invalid email or password" });
 
-    const { code } = await db.createVerificationCode({
-      email: req.body.email,
-      purpose: "login"
-    });
-    const emailResult = await sendVerificationEmail(req.body.email, code, "login");
-    res.json(verificationResponse(req.body.email, emailResult));
+    const { passwordHash: _passwordHash, ...safe } = user;
+    res.json({ user: safe, token: signToken(safe) });
   } catch (error) {
     if (isDbBusyError(error)) return dbBusyResponse(res);
     next(error);
@@ -183,7 +174,7 @@ router.post("/resend-code", async (req, res, next) => {
     }
 
     const { code } = await db.createVerificationCode({ email, purpose, payload });
-    const emailResult = await sendVerificationEmail(email, code, purpose);
+    const emailResult = await dispatchVerificationEmail(email, code, purpose);
     res.json(verificationResponse(email, emailResult));
   } catch (error) {
     if (
@@ -264,19 +255,18 @@ router.post("/forgot-password", async (req, res, next) => {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Valid email is required" });
 
-    const user = await db.findUserByEmail(parsed.data.email);
-    if (!user) {
-      return res.json({ message: `If an account exists for ${parsed.data.email}, a reset code was sent.` });
-    }
+    const email = parsed.data.email.trim().toLowerCase();
+    void (async () => {
+      try {
+        const { code } = await db.createVerificationCode({ email, purpose: "reset" });
+        await dispatchVerificationEmail(email, code, "reset");
+      } catch (error) {
+        console.error(`[RESET] Could not prepare reset code for ${email}:`, error.message);
+      }
+    })();
 
-    const { code } = await db.createVerificationCode({
-      email: parsed.data.email,
-      purpose: "reset"
-    });
-    const emailResult = await sendVerificationEmail(parsed.data.email, code, "reset");
     res.json({
-      message: emailResult.userMessage || `Password reset code sent to ${parsed.data.email}. Check your inbox.`,
-      devCode: emailResult.devCode
+      message: `If an account exists for ${email}, a reset code will arrive by email shortly.`
     });
   } catch (error) {
     next(error);
