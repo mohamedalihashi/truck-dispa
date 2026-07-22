@@ -386,8 +386,8 @@ export const db = {
           error.status = 400;
           throw error;
         }
-        if (!truck?.photoUrl1 || !truck?.photoUrl2) {
-          const error = new Error("Driver registration requires two truck photos");
+        if (!truck?.photoUrl1) {
+          const error = new Error("Driver registration requires one truck photo");
           error.status = 400;
           throw error;
         }

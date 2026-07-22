@@ -22,7 +22,6 @@ export function UsersPage() {
   const [error, setError] = useState("");
   const [createInfo, setCreateInfo] = useState("");
   const [truckPhoto1, setTruckPhoto1] = useState(null);
-  const [truckPhoto2, setTruckPhoto2] = useState(null);
   const [driverImage, setDriverImage] = useState(null);
   const [driverLicenseDocument, setDriverLicenseDocument] = useState(null);
   const [truckDocuments, setTruckDocuments] = useState([]);
@@ -31,7 +30,6 @@ export function UsersPage() {
   const [dispatcherPhoto, setDispatcherPhoto] = useState(null);
   const [dispatcherCv, setDispatcherCv] = useState(null);
   const [photo1Preview, setPhoto1Preview] = useState("");
-  const [photo2Preview, setPhoto2Preview] = useState("");
   const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
   const { data: summary } = useUserSummary();
   const mutations = useUserMutations();
@@ -45,7 +43,6 @@ export function UsersPage() {
     setError("");
     setCreateInfo("");
     setTruckPhoto1(null);
-    setTruckPhoto2(null);
     setDriverImage(null);
     setDriverLicenseDocument(null);
     setTruckDocuments([]);
@@ -54,7 +51,6 @@ export function UsersPage() {
     setDispatcherPhoto(null);
     setDispatcherCv(null);
     setPhoto1Preview("");
-    setPhoto2Preview("");
     reset({ role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" });
     setOpen(true);
   }
@@ -93,8 +89,8 @@ export function UsersPage() {
         let result;
         const createRole = isDispatcher ? "driver" : values.role;
         if (createRole === "driver") {
-          if (!truckPhoto1 || !truckPhoto2 || !driverImage || !driverLicenseDocument || truckDocuments.length === 0) {
-            setError("Driver license document, driver photo, two truck photos, and at least one truck document are required.");
+          if (!truckPhoto1 || !driverImage || !driverLicenseDocument || truckDocuments.length === 0) {
+            setError("Driver license document, driver photo, one truck photo, and at least one truck document are required.");
             return;
           }
           const formData = new FormData();
@@ -108,7 +104,6 @@ export function UsersPage() {
           formData.append("capacity", values.capacity);
           formData.append("truckType", values.truckType);
           formData.append("truckPhoto1", truckPhoto1);
-          formData.append("truckPhoto2", truckPhoto2);
           formData.append("driverImage", driverImage);
           formData.append("driverLicenseDocument", driverLicenseDocument);
           truckDocuments.forEach((file) => formData.append("truckDocuments", file));
@@ -360,10 +355,10 @@ export function UsersPage() {
                 <input className="stitch-input" placeholder="Capacity" {...register("capacity", { required: true })} />
                 <input className="stitch-input" placeholder="Write truck type" {...register("truckType", { required: true })} />
                 <label className="sm:col-span-2 block text-sm">
-                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo 1 *</span>
+                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo *</span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     className="stitch-input w-full"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -373,24 +368,7 @@ export function UsersPage() {
                     required
                   />
                   {photo1Preview ? (
-                    <img src={photo1Preview} alt="Truck preview 1" className="mt-2 h-24 w-full rounded-lg object-cover" />
-                  ) : null}
-                </label>
-                <label className="sm:col-span-2 block text-sm">
-                  <span className="mb-1.5 block font-medium text-on-surface-variant">Truck photo 2 *</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="stitch-input w-full"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      setTruckPhoto2(file || null);
-                      setPhoto2Preview(file ? URL.createObjectURL(file) : "");
-                    }}
-                    required
-                  />
-                  {photo2Preview ? (
-                    <img src={photo2Preview} alt="Truck preview 2" className="mt-2 h-24 w-full rounded-lg object-cover" />
+                    <img src={photo1Preview} alt="Truck preview" className="mt-2 h-24 w-full rounded-lg object-cover" />
                   ) : null}
                 </label>
                 <label className="sm:col-span-2 block text-sm">

@@ -46,7 +46,7 @@ const createSchema = z.object({
       capacity: z.string().min(1),
       truckType: z.string().trim().min(1),
       photoUrl1: z.string().min(1),
-      photoUrl2: z.string().min(1),
+      photoUrl2: z.string().min(1).optional(),
       documentUrls: z.array(z.string().min(1)).min(1)
     })
     .optional()
@@ -152,8 +152,8 @@ router.post(
         return res.status(400).json({ message: "Driver accounts require a truck" });
       }
 
-      if (parsed.data.role === "driver" && (!req.files?.truckPhoto1?.[0] || !req.files?.truckPhoto2?.[0])) {
-        return res.status(400).json({ message: "Two truck photos are required for driver registration" });
+      if (parsed.data.role === "driver" && !req.files?.truckPhoto1?.[0]) {
+        return res.status(400).json({ message: "One truck photo is required for driver registration" });
       }
 
       if (parsed.data.role === "driver" && (!parsed.data.driverLicense || !parsed.data.driverLicenseUrl || !parsed.data.driverImageUrl || !parsed.data.truck.documentUrls.length)) {

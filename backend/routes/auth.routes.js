@@ -27,7 +27,7 @@ const registerSchema = z.object({
       capacity: z.string().min(1),
       truckType: z.string().trim().min(1),
       photoUrl1: z.string().min(1),
-      photoUrl2: z.string().min(1),
+      photoUrl2: z.string().min(1).optional(),
       documentUrls: z.array(z.string().min(1)).min(1)
     })
     .optional()
