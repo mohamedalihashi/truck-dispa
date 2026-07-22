@@ -5,13 +5,14 @@ import { db } from "../services/dbService.js";
 import { generateTempPassword } from "../lib/password.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
 import { fileToPublicUrl, upload } from "../lib/uploads.js";
+import { strongPasswordSchema } from "../lib/validation.js";
 
 const router = Router();
 
 const createSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(6).optional(),
+  password: strongPasswordSchema.optional(),
   role: z.enum(["admin", "dispatcher", "customer", "driver"]),
   phone: z.string().optional(),
   truck: z
@@ -19,7 +20,7 @@ const createSchema = z.object({
       truckNumber: z.string().min(1),
       plateNumber: z.string().min(1),
       capacity: z.string().min(1),
-      truckType: z.string().min(1),
+      truckType: z.string().trim().min(1),
       photoUrl1: z.string().min(1),
       photoUrl2: z.string().min(1)
     })
@@ -112,12 +113,6 @@ router.post(
       if (existing) return res.status(409).json({ message: "Email already registered" });
 
       const tempPassword = parsed.data.password || generateTempPassword();
-      const { code } = await db.createVerificationCode({
-        email: parsed.data.email,
-        purpose: "login",
-        ttlMinutes: 24 * 60
-      });
-
       const user = await db.createUser({
         name: parsed.data.name,
         email: parsed.data.email,
@@ -129,12 +124,11 @@ router.post(
         actorId: req.user.sub
       });
 
-      const emailResult = await sendWelcomeEmail(parsed.data.email, tempPassword, code);
+      const emailResult = await sendWelcomeEmail(parsed.data.email, tempPassword);
 
       res.status(201).json({
         user,
-        message: `Account created. Temporary password and login code sent to ${parsed.data.email}.`,
-        devCode: emailResult.devCode,
+        message: `Account created. Temporary password sent to ${parsed.data.email}.`,
         devPassword: emailResult.devPassword
       });
     } catch (error) {

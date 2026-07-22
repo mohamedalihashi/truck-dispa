@@ -97,6 +97,8 @@ model User {
   avatarUrl    String?  @map("avatar_url")
   status       String   @default("Active")
   mustChangePassword Boolean @default(false) @map("must_change_password")
+  failedLoginAttempts Int @default(0) @map("failed_login_attempts")
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz()
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -322,9 +324,11 @@ model AuditLog {
 model VerificationCode {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email     String
-  code      String
+  codeHash  String    @map("code")
   purpose   String
   payload   Json?
+  attempts  Int       @default(0)
+  maxAttempts Int     @default(5) @map("max_attempts")
   expiresAt DateTime  @map("expires_at") @db.Timestamptz()
   usedAt    DateTime? @map("used_at") @db.Timestamptz()
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()

@@ -277,7 +277,32 @@ export const db = {
       include: userInclude,
     });
     if (!row) return null;
-    return { ...mapUser(row), passwordHash: row.passwordHash };
+    return {
+      ...mapUser(row),
+      passwordHash: row.passwordHash,
+      failedLoginAttempts: row.failedLoginAttempts,
+      lockedUntil: row.lockedUntil,
+    };
+  },
+
+  async recordFailedLogin(id) {
+    const user = await prisma.user.findUnique({ where: { id }, select: { failedLoginAttempts: true } });
+    if (!user) return;
+    const failedLoginAttempts = user.failedLoginAttempts + 1;
+    await prisma.user.update({
+      where: { id },
+      data: {
+        failedLoginAttempts,
+        lockedUntil: failedLoginAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null,
+      },
+    });
+  },
+
+  async clearFailedLogins(id) {
+    await prisma.user.update({
+      where: { id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
   },
 
   async findUserById(id) {
@@ -575,7 +600,7 @@ export const db = {
     const id = `REQ-${Math.floor(9000 + Math.random() * 1000)}`;
 
     return withTransaction(async (tx) => {
-      await tx.cargoRequest.create({
+      const request = await tx.cargoRequest.create({
         data: {
           id,
           customerId: payload.customerId,
@@ -592,28 +617,25 @@ export const db = {
             : null,
           status: "Pending",
         },
-      });
-
-      const notification = await tx.notification.create({
-        data: {
-          type: "order.created",
-          message: `${id} created by ${payload.customerName || "Customer"}`,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          actorId: payload.customerId,
-          action: "cargo.created",
-          entity: "cargo_requests",
-          entityId: id,
-        },
-      });
-
-      const request = await tx.cargoRequest.findUnique({
-        where: { id },
         include: cargoRequestInclude,
       });
+
+      const [notification] = await Promise.all([
+        tx.notification.create({
+          data: {
+            type: "order.created",
+            message: `${id} created by ${payload.customerName || "Customer"}`,
+          },
+        }),
+        tx.auditLog.create({
+          data: {
+            actorId: payload.customerId,
+            action: "cargo.created",
+            entity: "cargo_requests",
+            entityId: id,
+          },
+        })
+      ]);
 
       return { request: mapCargoRequest(request), notification: mapNotification(notification) };
     });
@@ -826,6 +848,15 @@ export const db = {
 
       const current = await tx.cargoRequest.findUnique({ where: { id } });
       if (!current) return null;
+
+      const normalizeType = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (normalizeType(truckCheck.truckType) !== normalizeType(current.truckType)) {
+        const error = new Error(
+          `Truck type does not match. Request needs "${current.truckType}", selected truck is "${truckCheck.truckType}".`
+        );
+        error.status = 400;
+        throw error;
+      }
 
       const currentStatus = reqStatusToApi(current.status);
       if (currentStatus !== "Approved" && currentStatus !== "Assigned") {
@@ -2069,23 +2100,25 @@ export const db = {
 
   async createVerificationCode({ email, purpose, payload = null, ttlMinutes = 10 }) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
+    const codeHash = await bcrypt.hash(code, 10);
     const normalizedEmail = email.toLowerCase().trim();
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
-    await prisma.verificationCode.updateMany({
-      where: { email: normalizedEmail, purpose, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-
-    await prisma.verificationCode.create({
+    const created = await prisma.verificationCode.create({
       data: {
         email: normalizedEmail,
-        code,
+        codeHash,
         purpose,
         payload: payload || undefined,
         expiresAt,
       },
     });
+
+    // The new code is usable immediately. Expire older codes without delaying the API response.
+    void prisma.verificationCode.updateMany({
+      where: { email: normalizedEmail, purpose, usedAt: null, id: { not: created.id } },
+      data: { usedAt: new Date() },
+    }).catch((error) => console.warn("Could not expire older verification codes:", error.message));
 
     return { code, expiresAt };
   },
@@ -2097,15 +2130,28 @@ export const db = {
     const row = await prisma.verificationCode.findFirst({
       where: {
         email: normalizedEmail,
-        code,
         purpose,
         usedAt: null,
         expiresAt: { gt: now },
+        attempts: { lt: 5 },
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, payload: true },
+      select: { id: true, payload: true, codeHash: true, attempts: true, maxAttempts: true },
     });
     if (!row) return null;
+
+    const matches = await bcrypt.compare(code, row.codeHash);
+    if (!matches) {
+      const nextAttempts = row.attempts + 1;
+      await prisma.verificationCode.update({
+        where: { id: row.id },
+        data: {
+          attempts: nextAttempts,
+          usedAt: nextAttempts >= row.maxAttempts ? now : undefined,
+        },
+      });
+      return null;
+    }
 
     const { count } = await prisma.verificationCode.updateMany({
       where: { id: row.id, usedAt: null, expiresAt: { gt: now } },

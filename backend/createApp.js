@@ -1,6 +1,7 @@
 import path from "node:path";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { errorHandler, notFound } from "./middleware/error.js";
 import { db } from "./services/dbService.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -57,6 +58,7 @@ export function createApp({ io } = {}) {
   }
 
   app.set("io", io || createNoopIo());
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));

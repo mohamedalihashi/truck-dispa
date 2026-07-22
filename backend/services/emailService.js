@@ -1,4 +1,4 @@
-const smtpConfigured = Boolean(
+﻿const smtpConfigured = Boolean(
   process.env.SMTP_USER && process.env.SMTP_PASS
 );
 
@@ -41,7 +41,7 @@ async function getTransporter() {
 }
 
 export function isEmailDevMode() {
-  return process.env.EMAIL_DEV_MODE === "true";
+  return process.env.NODE_ENV !== "production" && process.env.EMAIL_DEV_MODE === "true";
 }
 
 function purposeLabel(purpose) {
@@ -76,8 +76,8 @@ function buildMailContent(code, purpose) {
  * Send OTP email. Returns { devCode?, userMessage? } when the code must be shown in the UI.
  */
 export async function sendVerificationEmail(email, code, purpose) {
-  if (isLocalDemoEmail(email)) {
-    console.log(`[EMAIL] Demo address ${email} — OTP: ${code}`);
+  if (isLocalDemoEmail(email) && isEmailDevMode()) {
+    console.log(`[EMAIL] Demo address ${email} - OTP: ${code}`);
     return {
       devCode: code,
       userMessage:
@@ -85,12 +85,19 @@ export async function sendVerificationEmail(email, code, purpose) {
     };
   }
 
-  const mailer = await getTransporter();
-  if (!mailer) {
-    console.log(`[EMAIL] SMTP not configured — OTP for ${email}: ${code}`);
+  if (isEmailDevMode()) {
+    console.log(`[EMAIL] DEV MODE - OTP for ${email}: ${code}`);
     return {
       devCode: code,
-      userMessage: "Email is not configured. Use the verification code shown below."
+      userMessage: "Dev mode: use the verification code shown below (also logged in the server console)."
+    };
+  }
+
+  const mailer = await getTransporter();
+  if (!mailer) {
+    console.error(`[EMAIL] SMTP is not configured for ${email}`);
+    return {
+      userMessage: "Verification email could not be sent. Contact support."
     };
   }
 
@@ -105,12 +112,25 @@ export async function sendVerificationEmail(email, code, purpose) {
     };
   } catch (error) {
     console.error(`[EMAIL] Failed to send to ${email}:`, error.message);
-    console.log(`[EMAIL FALLBACK] OTP for ${email}: ${code}`);
     return {
-      devCode: code,
-      userMessage: `Could not deliver email (${error.message}). Use the code shown below.`
+      userMessage: "Verification email could not be sent. Try again later."
     };
   }
+}
+
+/** Respond fast; send OTP in the background when SMTP is configured. */
+export async function dispatchVerificationEmail(email, code, purpose) {
+  if ((isLocalDemoEmail(email) && isEmailDevMode()) || !smtpConfigured || isEmailDevMode()) {
+    return sendVerificationEmail(email, code, purpose);
+  }
+
+  void sendVerificationEmail(email, code, purpose).catch((error) => {
+    console.error(`[EMAIL] Background OTP failed for ${email}:`, error.message);
+  });
+
+  return {
+    userMessage: `Verification code sent to ${email}. Check your inbox and spam folder.`
+  };
 }
 
 export function verificationPayload(email, emailResult = {}) {
@@ -121,28 +141,23 @@ export function verificationPayload(email, emailResult = {}) {
       emailResult.userMessage ||
       `Verification code sent to ${email}. Check your inbox and spam folder.`
   };
-  if (emailResult.devCode) body.devCode = emailResult.devCode;
+  if (isEmailDevMode() && emailResult.devCode) body.devCode = emailResult.devCode;
   return body;
 }
 
-/** Welcome email when admin creates a user — temporary password + first-login OTP. */
-export async function sendWelcomeEmail(email, tempPassword, otpCode) {
+/** Welcome email when an admin creates a user. */
+export async function sendWelcomeEmail(email, tempPassword) {
   const appName = "TruckDispatch";
-  const subject = `${appName} — your new account`;
+  const subject = `${appName} â€” your new account`;
   const text = [
     `Welcome to ${appName}!`,
     "",
     `An administrator created an account for you.`,
     "",
     `Temporary password: ${tempPassword}`,
-    `Login verification code: ${otpCode}`,
-    "",
     "Steps:",
     "1. Sign in with your email and the temporary password above.",
-    "2. Enter the verification code when prompted (or use Resend code for a new one).",
-    "3. You will be asked to set a new password before accessing the dashboard.",
-    "",
-    "The verification code expires in 24 hours."
+    "2. You will be asked to set a new password before accessing the dashboard."
   ].join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px">
@@ -152,25 +167,21 @@ export async function sendWelcomeEmail(email, tempPassword, otpCode) {
         <p style="margin:0 0 8px;color:#666;font-size:13px">Temporary password</p>
         <p style="margin:0;font-size:20px;font-weight:700;letter-spacing:1px;color:#0d1c32">${tempPassword}</p>
       </div>
-      <div style="background:#fff7f0;border-radius:8px;padding:16px;margin:20px 0;border:1px solid #fe6b00">
-        <p style="margin:0 0 8px;color:#666;font-size:13px">Login verification code</p>
-        <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:6px;color:#fe6b00">${otpCode}</p>
-      </div>
       <p style="color:#444;line-height:1.6;font-size:14px">
         After sign-in you <strong>must change your password</strong> before using the system.
       </p>
     </div>
   `;
 
-  if (isLocalDemoEmail(email)) {
-    console.log(`[EMAIL] Welcome ${email} — password: ${tempPassword}, OTP: ${otpCode}`);
-    return { devCode: otpCode, devPassword: tempPassword };
+  if (isLocalDemoEmail(email) && isEmailDevMode()) {
+    console.log(`[EMAIL] Welcome ${email} â€” password: ${tempPassword}`);
+    return { devPassword: tempPassword };
   }
 
   const mailer = await getTransporter();
   if (!mailer) {
-    console.log(`[EMAIL] Welcome ${email} — password: ${tempPassword}, OTP: ${otpCode}`);
-    return { devCode: otpCode, devPassword: tempPassword };
+    console.error(`[EMAIL] SMTP is not configured for welcome email to ${email}`);
+    return {};
   }
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -180,7 +191,6 @@ export async function sendWelcomeEmail(email, tempPassword, otpCode) {
     return { userMessage: `Account credentials sent to ${email}.` };
   } catch (error) {
     console.error(`[EMAIL] Welcome failed for ${email}:`, error.message);
-    console.log(`[EMAIL FALLBACK] password: ${tempPassword}, OTP: ${otpCode}`);
-    return { devCode: otpCode, devPassword: tempPassword };
+    return {};
   }
 }

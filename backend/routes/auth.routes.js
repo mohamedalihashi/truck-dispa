@@ -6,13 +6,15 @@ import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
 import { dispatchVerificationEmail, verificationPayload } from "../services/emailService.js";
 import { fileToPublicUrl, upload } from "../lib/uploads.js";
+import { strongPasswordSchema } from "../lib/validation.js";
+import { authLimiter, otpLimiter, passwordResetLimiter, registrationLimiter, resendLimiter } from "../middleware/security.js";
 
 const router = Router();
 
 const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: strongPasswordSchema,
   role: z.enum(["customer", "driver"]),
   phone: z.string().optional(),
   truck: z
@@ -57,7 +59,7 @@ function verificationResponse(email, emailResult) {
   return verificationPayload(email, emailResult);
 }
 
-router.post("/register", validate(registerSchema), async (req, res, next) => {
+router.post("/register", registrationLimiter, validate(registerSchema), async (req, res, next) => {
   try {
     if (req.body.role === "driver" && !req.body.truck) {
       return res.status(400).json({ message: "Driver accounts require a truck" });
@@ -73,7 +75,7 @@ router.post("/register", validate(registerSchema), async (req, res, next) => {
   }
 });
 
-router.post("/register/verify", validate(verifySchema), async (req, res, next) => {
+router.post("/register/verify", otpLimiter, validate(verifySchema), async (req, res, next) => {
   try {
     const payload = await db.consumeVerificationCode({
       email: req.body.email,
@@ -97,14 +99,22 @@ router.post("/register/verify", validate(verifySchema), async (req, res, next) =
   }
 });
 
-router.post("/login", validate(loginSchema), async (req, res, next) => {
+router.post("/login", authLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const user = await db.findUserByEmail(req.body.email);
     if (!user || !user.passwordHash) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      return res.status(423).json({ message: "Account temporarily locked. Try again later." });
+    }
     const valid = await bcrypt.compare(req.body.password, user.passwordHash);
-    if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+    if (!valid) {
+      await db.recordFailedLogin(user.id);
+      return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    await db.clearFailedLogins(user.id);
 
     const { passwordHash: _passwordHash, ...safe } = user;
     res.json({ user: safe, token: signToken(safe) });
@@ -114,7 +124,7 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
   }
 });
 
-router.post("/login/verify", validate(verifySchema), async (req, res, next) => {
+router.post("/login/verify", otpLimiter, validate(verifySchema), async (req, res, next) => {
   try {
     const verified = await db.consumeVerificationCode({
       email: req.body.email,
@@ -132,7 +142,7 @@ router.post("/login/verify", validate(verifySchema), async (req, res, next) => {
   }
 });
 
-router.post("/resend-code", async (req, res, next) => {
+router.post("/resend-code", resendLimiter, async (req, res, next) => {
   try {
     const schema = z.object({
       email: z.string().email().transform((v) => v.trim().toLowerCase()),
@@ -192,7 +202,7 @@ router.post("/change-password", requireAuth, async (req, res, next) => {
   try {
     const schema = z.object({
       currentPassword: z.string().min(1),
-      newPassword: z.string().min(6)
+      newPassword: strongPasswordSchema
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Validation failed" });
@@ -249,7 +259,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/forgot-password", async (req, res, next) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res, next) => {
   try {
     const schema = z.object({ email: z.string().email() });
     const parsed = schema.safeParse(req.body);
@@ -273,11 +283,11 @@ router.post("/forgot-password", async (req, res, next) => {
   }
 });
 
-router.post("/reset-password", async (req, res, next) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res, next) => {
   try {
     const schema = z.object({
       email: z.string().email(),
-      password: z.string().min(6),
+      password: strongPasswordSchema,
       code: z.string().length(6)
     });
     const parsed = schema.safeParse(req.body);
