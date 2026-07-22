@@ -20,7 +20,7 @@ describe("public registration validation", () => {
     expect(result.success).toBe(false);
   });
 
-  it("requires complete driver and truck data", () => {
+  it("forbids public driver registration", () => {
     const result = registerSchema.safeParse({
       name: "Driver One", email: "driver@example.com", phone: "+252610000003", password, role: "driver",
       nationalIdNumber: "NID-1", driverLicense: "LIC-1", driverLicenseUrl: "https://cdn/lic.jpg",
@@ -29,10 +29,10 @@ describe("public registration validation", () => {
         photoUrl1: "https://cdn/1.jpg", photoUrl2: "https://cdn/2.jpg", photoPublicId1: "one", photoPublicId2: "two",
         registrationDocumentUrl: "https://cdn/doc.pdf", registrationDocumentPublicId: "doc" },
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
-  it.each(["admin", "dispatcher"])("forbids public %s registration", (role) => {
+  it.each(["admin", "dispatcher", "driver"])("forbids public %s registration", (role) => {
     expect(registerSchema.safeParse({ name: "Blocked User", email: `${role}@example.com`, phone: "+252610009999", password, role }).success).toBe(false);
   });
 });

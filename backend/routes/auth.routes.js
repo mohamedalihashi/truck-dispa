@@ -16,7 +16,7 @@ export const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: strongPasswordSchema,
-  role: z.enum(["customer", "driver"]),
+  role: z.literal("customer"),
   phone: z.string().trim().min(1),
   customerProfile: z.object({
     customerType: z.enum(["Individual", "Business"]),
@@ -28,34 +28,8 @@ export const registerSchema = z.object({
     businessRegistrationNumber: z.string().trim().optional(),
     profilePhotoUrl: z.string().url().optional(),
     profilePhotoPublicId: z.string().optional()
-  }).optional(),
-  nationalIdNumber: z.string().trim().min(1).optional(),
-  driverLicense: z.string().trim().min(1).optional(),
-  driverLicenseUrl: z.string().min(1).optional(),
-  driverLicensePublicId: z.string().min(1).optional(),
-  driverImageUrl: z.string().min(1).optional(),
-  driverImagePublicId: z.string().min(1).optional(),
-  truck: z
-    .object({
-      truckNumber: z.string().min(1),
-      plateNumber: z.string().min(1),
-      capacity: z.string().min(1),
-      truckType: z.string().trim().min(1),
-      photoUrl1: z.string().min(1),
-      photoUrl2: z.string().min(1),
-      photoPublicId1: z.string().min(1),
-      photoPublicId2: z.string().min(1),
-      registrationDocumentUrl: z.string().min(1),
-      registrationDocumentPublicId: z.string().min(1)
-    })
-    .optional()
+  }).optional()
 }).superRefine((data, ctx) => {
-  if (data.role === "driver") {
-    if (!data.truck || !data.nationalIdNumber || !data.driverLicense || !data.driverLicenseUrl || !data.driverImageUrl) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["truck"], message: "Complete driver and truck information is required" });
-    }
-    return;
-  }
   if (!data.customerProfile) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customerProfile"], message: "Customer profile is required" });
     return;
@@ -98,78 +72,32 @@ function verificationResponse(email, emailResult) {
 }
 
 router.post("/register", registrationLimiter, registrationUpload.fields([
-  { name: "profilePhoto", maxCount: 1 },
-  { name: "licenseImage", maxCount: 1 },
-  { name: "truckPhoto1", maxCount: 1 },
-  { name: "truckPhoto2", maxCount: 1 },
-  { name: "truckRegistrationDocument", maxCount: 1 }
+  { name: "profilePhoto", maxCount: 1 }
 ]), async (req, res, next) => {
   const uploadedPublicIds = [];
   try {
-    if (!['customer', 'driver'].includes(req.body.role)) {
-      return res.status(403).json({ message: "Public registration only supports customer or driver accounts" });
+    if (req.body.role !== "customer") {
+      return res.status(403).json({ message: "Public registration only supports customer accounts. Drivers must be registered by an admin." });
     }
-    const conflict = await db.findRegistrationConflict({
-      email: req.body.email,
-      phone: req.body.phone,
-      plateNumber: req.body.plateNumber,
-      nationalIdNumber: req.body.nationalIdNumber
-    });
+    const conflict = await db.findRegistrationConflict({ email: req.body.email, phone: req.body.phone });
     if (conflict) return res.status(409).json({ message: `${conflict} already registered` });
 
-    let payload;
-    if (req.body.role === "customer") {
-      const profilePhoto = await uploadBuffer(req.files?.profilePhoto?.[0], "customers");
-      if (profilePhoto) uploadedPublicIds.push(profilePhoto.publicId);
-      payload = {
-        name: req.body.name, email: req.body.email, phone: req.body.phone, password: req.body.password, role: "customer",
-        customerProfile: {
-          customerType: req.body.customerType,
-          city: req.body.city,
-          address: req.body.address || undefined,
-          companyName: req.body.companyName || undefined,
-          companyPhone: req.body.companyPhone || undefined,
-          companyAddress: req.body.companyAddress || undefined,
-          businessRegistrationNumber: req.body.businessRegistrationNumber || undefined,
-          profilePhotoUrl: profilePhoto?.url,
-          profilePhotoPublicId: profilePhoto?.publicId
-        }
-      };
-    } else {
-      const requiredFiles = ["profilePhoto", "licenseImage", "truckPhoto1", "truckPhoto2", "truckRegistrationDocument"];
-      if (requiredFiles.some((field) => !req.files?.[field]?.[0])) {
-        return res.status(400).json({ message: "Profile, licence, two truck photos, and truck registration document are required" });
+    const profilePhoto = await uploadBuffer(req.files?.profilePhoto?.[0], "customers");
+    if (profilePhoto) uploadedPublicIds.push(profilePhoto.publicId);
+    const payload = {
+      name: req.body.name, email: req.body.email, phone: req.body.phone, password: req.body.password, role: "customer",
+      customerProfile: {
+        customerType: req.body.customerType,
+        city: req.body.city,
+        address: req.body.address || undefined,
+        companyName: req.body.companyName || undefined,
+        companyPhone: req.body.companyPhone || undefined,
+        companyAddress: req.body.companyAddress || undefined,
+        businessRegistrationNumber: req.body.businessRegistrationNumber || undefined,
+        profilePhotoUrl: profilePhoto?.url,
+        profilePhotoPublicId: profilePhoto?.publicId
       }
-      const [profile, licence, photo1, photo2, registrationDocument] = await Promise.all([
-        uploadBuffer(req.files.profilePhoto[0], "drivers"),
-        uploadBuffer(req.files.licenseImage[0], "driver-licences"),
-        uploadBuffer(req.files.truckPhoto1[0], "trucks"),
-        uploadBuffer(req.files.truckPhoto2[0], "trucks"),
-        uploadBuffer(req.files.truckRegistrationDocument[0], "truck-documents")
-      ]);
-      uploadedPublicIds.push(profile.publicId, licence.publicId, photo1.publicId, photo2.publicId, registrationDocument.publicId);
-      payload = {
-        name: req.body.name, email: req.body.email, phone: req.body.phone, password: req.body.password, role: "driver",
-        nationalIdNumber: req.body.nationalIdNumber,
-        driverLicense: req.body.driverLicense,
-        driverLicenseUrl: licence.url,
-        driverLicensePublicId: licence.publicId,
-        driverImageUrl: profile.url,
-        driverImagePublicId: profile.publicId,
-        truck: {
-          plateNumber: req.body.plateNumber,
-          truckNumber: req.body.truckNumber,
-          truckType: req.body.truckType,
-          capacity: req.body.capacity,
-          photoUrl1: photo1.url,
-          photoUrl2: photo2.url,
-          photoPublicId1: photo1.publicId,
-          photoPublicId2: photo2.publicId,
-          registrationDocumentUrl: registrationDocument.url,
-          registrationDocumentPublicId: registrationDocument.publicId
-        }
-      };
-    }
+    };
 
     const parsed = registerSchema.safeParse(payload);
     if (!parsed.success) {
@@ -206,9 +134,6 @@ router.post("/register/verify", otpLimiter, validate(verifySchema), async (req, 
     if (existing) return res.status(409).json({ message: "Email already registered" });
 
     const user = await db.createUser({ ...parsed.data, password: undefined, passwordHash: payload.passwordHash });
-    if (user.role === "driver") {
-      return res.status(201).json({ user, verificationPending: true, message: "Registration complete. An admin or dispatcher must verify your account." });
-    }
     res.status(201).json({ user, token: signToken(user) });
   } catch (error) {
     next(error);

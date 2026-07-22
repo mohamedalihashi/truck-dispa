@@ -31,12 +31,10 @@ export function RegisterPage() {
   } = useForm({
     defaultValues: {
       code: "",
-      accountType: "customer",
       customerType: "Individual"
     }
   });
   const customerType = watch("customerType");
-  const accountType = watch("accountType");
 
   useEffect(() => {
     const stored = loadRegisterVerification();
@@ -48,20 +46,11 @@ export function RegisterPage() {
   function buildPayload(values) {
     const payload = new FormData();
     ["name", "email", "phone", "password"].forEach((key) => payload.append(key, values[key]));
-    payload.append("role", values.accountType);
-    if (values.accountType === "customer") {
-      ["customerType", "city", "address", "companyName", "companyPhone", "companyAddress", "businessRegistrationNumber"].forEach((key) => {
-        if (values[key]) payload.append(key, values[key]);
-      });
-      if (values.profilePhoto?.[0]) payload.append("profilePhoto", values.profilePhoto[0]);
-    } else {
-      ["nationalIdNumber", "driverLicense", "plateNumber", "truckNumber", "truckType", "capacity"].forEach((key) => payload.append(key, values[key]));
-      payload.append("profilePhoto", values.profilePhoto[0]);
-      payload.append("licenseImage", values.licenseImage[0]);
-      payload.append("truckPhoto1", values.truckPhoto1[0]);
-      payload.append("truckPhoto2", values.truckPhoto2[0]);
-      payload.append("truckRegistrationDocument", values.truckRegistrationDocument[0]);
-    }
+    payload.append("role", "customer");
+    ["customerType", "city", "address", "companyName", "companyPhone", "companyAddress", "businessRegistrationNumber"].forEach((key) => {
+      if (values[key]) payload.append(key, values[key]);
+    });
+    if (values.profilePhoto?.[0]) payload.append("profilePhoto", values.profilePhoto[0]);
     return payload;
   }
 
@@ -154,7 +143,7 @@ export function RegisterPage() {
           {step === "form" ? (
             <>
               <h2 className="text-2xl font-bold text-primary">Create account</h2>
-              <p className="mt-1 text-sm text-on-surface-variant">Register as a customer or driver/truck owner.</p>
+              <p className="mt-1 text-sm text-on-surface-variant">Register as a customer. Driver accounts are created by an administrator.</p>
 
               <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmitForm)}>
                 <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
@@ -165,14 +154,7 @@ export function RegisterPage() {
                 <Field label="Password" className="sm:col-span-2">
                   <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 8 })} />
                 </Field>
-                <Field label="Account type" className="sm:col-span-2">
-                  <select className="stitch-input" {...register("accountType", { required: true })}>
-                    <option value="customer">Customer</option>
-                    <option value="driver">Driver / Truck Owner</option>
-                  </select>
-                </Field>
-                {accountType === "customer" ? (
-                  <>
+                <>
                     <Field label="Customer type">
                       <select className="stitch-input" {...register("customerType", { required: true })}>
                         <option value="Individual">Individual</option>
@@ -190,22 +172,7 @@ export function RegisterPage() {
                         <Field label="Business registration no. (optional)" className="sm:col-span-2"><input className="stitch-input" {...register("businessRegistrationNumber")} /></Field>
                       </>
                     ) : null}
-                  </>
-                ) : (
-                  <>
-                    <Field label="National ID number"><input className="stitch-input" {...register("nationalIdNumber", { required: true })} /></Field>
-                    <Field label="Driver licence number"><input className="stitch-input" {...register("driverLicense", { required: true })} /></Field>
-                    <FileInput label="Licence image *" name="licenseImage" register={register} accept="image/jpeg,image/png,image/webp" />
-                    <FileInput label="Profile photo *" name="profilePhoto" register={register} accept="image/jpeg,image/png,image/webp" />
-                    <Field label="Plate number"><input className="stitch-input" {...register("plateNumber", { required: true })} /></Field>
-                    <Field label="Truck number"><input className="stitch-input" {...register("truckNumber", { required: true })} /></Field>
-                    <Field label="Truck type"><input className="stitch-input" {...register("truckType", { required: true })} /></Field>
-                    <Field label="Capacity"><input className="stitch-input" {...register("capacity", { required: true })} /></Field>
-                    <FileInput label="Truck photo 1 *" name="truckPhoto1" register={register} accept="image/jpeg,image/png,image/webp" />
-                    <FileInput label="Truck photo 2 *" name="truckPhoto2" register={register} accept="image/jpeg,image/png,image/webp" />
-                    <FileInput label="Truck registration document *" name="truckRegistrationDocument" register={register} accept="application/pdf,image/jpeg,image/png,image/webp" />
-                  </>
-                )}
+                </>
 
                 {error && <p className="sm:col-span-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
                 <div className="sm:col-span-2">
