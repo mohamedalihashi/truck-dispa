@@ -19,6 +19,10 @@ export function errorHandler(error, _req, res, _next) {
     status = 503;
     message = "Database is busy. Please wait a moment and try again.";
   }
+  if (error?.code === "P2002") {
+    status = 409;
+    message = "Email, phone, national ID, or plate number is already registered.";
+  }
 
   res.status(status).json({
     message,

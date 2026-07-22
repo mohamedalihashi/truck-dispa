@@ -26,6 +26,8 @@ enum TruckStatus {
   Available
   Busy
   Maintenance
+  Pending_Verification @map("Pending Verification")
+  Unavailable
 
   @@map("truck_status")
 }
@@ -93,11 +95,15 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole
-  phone        String?
+  phone        String?  @unique
   avatarUrl    String?  @map("avatar_url")
+  avatarPublicId String? @map("avatar_public_id")
+  nationalIdNumber String? @unique @map("national_id_number")
   driverLicense String? @map("driver_license")
   driverLicenseUrl String? @map("driver_license_url")
+  driverLicensePublicId String? @map("driver_license_public_id")
   driverImageUrl String? @map("driver_image_url")
+  driverImagePublicId String? @map("driver_image_public_id")
   status       String   @default("Active")
   mustChangePassword Boolean @default(false) @map("must_change_password")
   failedLoginAttempts Int @default(0) @map("failed_login_attempts")
@@ -131,9 +137,13 @@ model CustomerProfile {
   userId       String   @unique @map("user_id") @db.Uuid
   customerType String   @map("customer_type")
   city         String
+  address      String?
+  profilePhotoUrl String? @map("profile_photo_url")
+  profilePhotoPublicId String? @map("profile_photo_public_id")
   companyName  String?  @map("company_name")
   companyPhone String?  @map("company_phone")
   companyAddress String? @map("company_address")
+  businessRegistrationNumber String? @map("business_registration_number")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -194,6 +204,10 @@ model Truck {
   truckType   String      @map("truck_type")
   photoUrl1   String?     @map("photo_url_1")
   photoUrl2   String?     @map("photo_url_2")
+  photoPublicId1 String?   @map("photo_public_id_1")
+  photoPublicId2 String?   @map("photo_public_id_2")
+  registrationDocumentUrl String? @map("registration_document_url")
+  registrationDocumentPublicId String? @map("registration_document_public_id")
   documentUrls String[]   @default([]) @map("document_urls")
   driverId    String      @unique @map("driver_id") @db.Uuid
   status      TruckStatus @default(Available)

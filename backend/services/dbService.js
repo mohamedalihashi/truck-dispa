@@ -29,9 +29,13 @@ function mapUser(row) {
     role: row.role,
     phone: row.phone,
     avatarUrl: row.avatarUrl || null,
+    avatarPublicId: row.avatarPublicId || null,
+    nationalIdNumber: row.nationalIdNumber || null,
     driverLicense: row.driverLicense || null,
     driverLicenseUrl: row.driverLicenseUrl || null,
+    driverLicensePublicId: row.driverLicensePublicId || null,
     driverImageUrl: row.driverImageUrl || null,
+    driverImagePublicId: row.driverImagePublicId || null,
     status: row.status,
     mustChangePassword: Boolean(row.mustChangePassword),
     createdAt: row.createdAt,
@@ -65,6 +69,7 @@ function mapTruck(row) {
     photoUrl1: row.photoUrl1 || null,
     photoUrl2: row.photoUrl2 || null,
     documentUrls: row.documentUrls || [],
+    registrationDocumentUrl: row.registrationDocumentUrl || null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -297,6 +302,25 @@ export const db = {
     };
   },
 
+  async findRegistrationConflict({ email, phone, plateNumber, nationalIdNumber }) {
+    const [user, truck] = await Promise.all([
+      prisma.user.findFirst({
+        where: { OR: [
+          ...(email ? [{ email: { equals: email, mode: "insensitive" } }] : []),
+          ...(phone ? [{ phone }] : []),
+          ...(nationalIdNumber ? [{ nationalIdNumber }] : []),
+        ] },
+        select: { email: true, phone: true, nationalIdNumber: true },
+      }),
+      plateNumber ? prisma.truck.findUnique({ where: { plateNumber }, select: { id: true } }) : null,
+    ]);
+    if (truck) return "Plate number";
+    if (!user) return null;
+    if (email && user.email.toLowerCase() === email.toLowerCase()) return "Email";
+    if (phone && user.phone === phone) return "Phone";
+    return "National ID number";
+  },
+
   async recordFailedLogin(id) {
     const user = await prisma.user.findUnique({ where: { id }, select: { failedLoginAttempts: true } });
     if (!user) return;
@@ -364,8 +388,8 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, role, phone, customerProfile, driverLicense, driverLicenseUrl, driverImageUrl, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
-    const passwordHash = await bcrypt.hash(password, 10);
+  async createUser({ name, email, password, passwordHash: suppliedPasswordHash, role, phone, customerProfile, nationalIdNumber, driverLicense, driverLicenseUrl, driverLicensePublicId, driverImageUrl, driverImagePublicId, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
+    const passwordHash = suppliedPasswordHash || await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -374,15 +398,19 @@ export const db = {
           passwordHash,
           role,
           phone: phone || null,
+          avatarUrl: role === "customer" ? customerProfile?.profilePhotoUrl || null : null,
+          avatarPublicId: role === "customer" ? customerProfile?.profilePhotoPublicId || null : null,
+          nationalIdNumber: role === "driver" ? nationalIdNumber : null,
           driverLicense: role === "driver" ? driverLicense : null,
           driverLicenseUrl: role === "driver" ? driverLicenseUrl : null,
+          driverLicensePublicId: role === "driver" ? driverLicensePublicId : null,
           driverImageUrl: role === "driver" ? driverImageUrl : null,
+          driverImagePublicId: role === "driver" ? driverImagePublicId : null,
           status: role === "driver" ? "Pending Verification" : "Active",
           mustChangePassword: Boolean(mustChangePassword),
         },
       });
 
-      let truckRow = null;
       if (role === "driver") {
         if (!truck?.truckNumber || !truck?.plateNumber || !truck?.capacity || !truck?.truckType) {
           const error = new Error("Driver registration requires truck details");
@@ -394,12 +422,12 @@ export const db = {
           error.status = 400;
           throw error;
         }
-        if (!driverLicense || !driverLicenseUrl || !driverImageUrl || !truck.documentUrls?.length) {
-          const error = new Error("Driver registration requires a license number, license document, driver photo, and truck documents");
+        if (!nationalIdNumber || !driverLicense || !driverLicenseUrl || !driverImageUrl || !truck.registrationDocumentUrl) {
+          const error = new Error("Driver registration requires identity, licence, profile, and truck registration documents");
           error.status = 400;
           throw error;
         }
-        truckRow = await tx.truck.create({
+        await tx.truck.create({
           data: {
             truckNumber: truck.truckNumber,
             plateNumber: truck.plateNumber,
@@ -407,9 +435,12 @@ export const db = {
             truckType: truck.truckType,
             photoUrl1: truck.photoUrl1,
             photoUrl2: truck.photoUrl2,
-            documentUrls: truck.documentUrls,
+            photoPublicId1: truck.photoPublicId1,
+            photoPublicId2: truck.photoPublicId2,
+            registrationDocumentUrl: truck.registrationDocumentUrl,
+            registrationDocumentPublicId: truck.registrationDocumentPublicId,
             driverId: user.id,
-            status: "Available",
+            status: "Pending_Verification",
           },
         });
       }
@@ -473,6 +504,7 @@ export const db = {
       const driver = await tx.user.findFirst({ where: { id, role: "driver" } });
       if (!driver) return null;
       await tx.user.update({ where: { id }, data: { status: "Active" } });
+      await tx.truck.updateMany({ where: { driverId: id }, data: { status: "Available" } });
       await tx.auditLog.create({
         data: { actorId, action: "driver.verified", entity: "users", entityId: id, meta: {} },
       });
@@ -1414,7 +1446,7 @@ export const db = {
     }
 
     return withTransaction(async (tx) => {
-      const feedback = await tx.tripFeedback.create({
+      await tx.tripFeedback.create({
         data: {
           tripId,
           customerId,

@@ -56,7 +56,8 @@ export function AuthProvider({ children }) {
         return completeAuth(result);
       },
       async verifyRegister(payload) {
-        return completeAuth(await api.verifyRegister(payload));
+        const result = await api.verifyRegister(payload);
+        return result.token ? completeAuth(result) : result;
       },
       async resendCode(payload) {
         return api.resendCode(payload);

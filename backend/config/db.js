@@ -1,4 +1,4 @@
-import { prisma, disconnectDatabase, ensureDatabaseConnection } from "../lib/prisma.js";
+import { disconnectDatabase, ensureDatabaseConnection } from "../lib/prisma.js";
 
 export async function connectDatabase() {
   await ensureDatabaseConnection();

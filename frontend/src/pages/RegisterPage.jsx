@@ -21,7 +21,6 @@ export function RegisterPage() {
   const [pendingEmail, setPendingEmail] = useState("");
   const [devCode, setDevCode] = useState("");
   const [info, setInfo] = useState("");
-  const [pendingRegistration, setPendingRegistration] = useState(null);
   const [resending, setResending] = useState(false);
   const {
     register,
@@ -32,34 +31,38 @@ export function RegisterPage() {
   } = useForm({
     defaultValues: {
       code: "",
+      accountType: "customer",
       customerType: "Individual"
     }
   });
   const customerType = watch("customerType");
+  const accountType = watch("accountType");
 
   useEffect(() => {
     const stored = loadRegisterVerification();
     if (stored?.email) setPendingEmail(stored.email);
-    if (stored?.registration) setPendingRegistration(stored.registration);
   }, []);
 
   if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
 
   function buildPayload(values) {
-    return {
-      name: values.name,
-      email: values.email,
-      password: values.password,
-      role: "customer",
-      phone: values.phone,
-      customerProfile: {
-        customerType: values.customerType,
-        city: values.city,
-        companyName: values.customerType === "Business" ? values.companyName : undefined,
-        companyPhone: values.customerType === "Business" ? values.companyPhone : undefined,
-        companyAddress: values.customerType === "Business" ? values.companyAddress : undefined
-      }
-    };
+    const payload = new FormData();
+    ["name", "email", "phone", "password"].forEach((key) => payload.append(key, values[key]));
+    payload.append("role", values.accountType);
+    if (values.accountType === "customer") {
+      ["customerType", "city", "address", "companyName", "companyPhone", "companyAddress", "businessRegistrationNumber"].forEach((key) => {
+        if (values[key]) payload.append(key, values[key]);
+      });
+      if (values.profilePhoto?.[0]) payload.append("profilePhoto", values.profilePhoto[0]);
+    } else {
+      ["nationalIdNumber", "driverLicense", "plateNumber", "truckNumber", "truckType", "capacity"].forEach((key) => payload.append(key, values[key]));
+      payload.append("profilePhoto", values.profilePhoto[0]);
+      payload.append("licenseImage", values.licenseImage[0]);
+      payload.append("truckPhoto1", values.truckPhoto1[0]);
+      payload.append("truckPhoto2", values.truckPhoto2[0]);
+      payload.append("truckRegistrationDocument", values.truckRegistrationDocument[0]);
+    }
+    return payload;
   }
 
   async function onSubmitForm(values) {
@@ -70,8 +73,7 @@ export function RegisterPage() {
       const result = await registerUser(payload);
       if (result.verificationRequired) {
         setPendingEmail(values.email);
-        setPendingRegistration(payload);
-        saveRegisterVerification(values.email, payload);
+        saveRegisterVerification(values.email, null);
         setDevCode(result.devCode || "");
         setStep("verify");
         setInfo(result.message);
@@ -89,6 +91,10 @@ export function RegisterPage() {
     try {
       const result = await verifyRegister({ email: pendingEmail, code: values.code });
       clearRegisterVerification();
+      if (result.verificationPending) {
+        navigate("/login", { replace: true, state: { email: pendingEmail } });
+        return;
+      }
       navigate(roleHome(result.user.role));
     } catch (err) {
       setError(err.message);
@@ -100,7 +106,6 @@ export function RegisterPage() {
     setInfo("");
     const stored = loadRegisterVerification();
     const email = pendingEmail || stored?.email;
-    const registration = pendingRegistration || stored?.registration;
 
     if (!email) {
       setError("Session expired. Please fill the registration form again.");
@@ -111,14 +116,9 @@ export function RegisterPage() {
     try {
       const result = await resendCode({
         email,
-        purpose: "register",
-        registration: registration || undefined
+        purpose: "register"
       });
       setPendingEmail(email);
-      if (registration) {
-        setPendingRegistration(registration);
-        saveRegisterVerification(email, registration);
-      }
       setInfo(result.message || "A new verification code was sent.");
       setDevCode(result.devCode || "");
       setValue("code", result.devCode || "");
@@ -154,7 +154,7 @@ export function RegisterPage() {
           {step === "form" ? (
             <>
               <h2 className="text-2xl font-bold text-primary">Create account</h2>
-              <p className="mt-1 text-sm text-on-surface-variant">Register as a customer to book trucks and track shipments.</p>
+              <p className="mt-1 text-sm text-on-surface-variant">Register as a customer or driver/truck owner.</p>
 
               <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmitForm)}>
                 <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
@@ -165,20 +165,47 @@ export function RegisterPage() {
                 <Field label="Password" className="sm:col-span-2">
                   <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 8 })} />
                 </Field>
-                <Field label="Customer type">
-                  <select className="stitch-input" {...register("customerType", { required: true })}>
-                    <option value="Individual">Individual</option>
-                    <option value="Business">Business</option>
+                <Field label="Account type" className="sm:col-span-2">
+                  <select className="stitch-input" {...register("accountType", { required: true })}>
+                    <option value="customer">Customer</option>
+                    <option value="driver">Driver / Truck Owner</option>
                   </select>
                 </Field>
-                <Field label="City"><input className="stitch-input" {...register("city", { required: true })} /></Field>
-                {customerType === "Business" ? (
+                {accountType === "customer" ? (
                   <>
-                    <Field label="Company name" className="sm:col-span-2"><input className="stitch-input" {...register("companyName", { required: true })} /></Field>
-                    <Field label="Company phone"><input className="stitch-input" type="tel" {...register("companyPhone", { required: true })} /></Field>
-                    <Field label="Company address"><input className="stitch-input" {...register("companyAddress", { required: true })} /></Field>
+                    <Field label="Customer type">
+                      <select className="stitch-input" {...register("customerType", { required: true })}>
+                        <option value="Individual">Individual</option>
+                        <option value="Business">Business</option>
+                      </select>
+                    </Field>
+                    <Field label="City"><input className="stitch-input" {...register("city", { required: true })} /></Field>
+                    <Field label="Address (optional)" className="sm:col-span-2"><input className="stitch-input" {...register("address")} /></Field>
+                    <FileInput label="Profile photo (optional)" name="profilePhoto" register={register} required={false} accept="image/jpeg,image/png,image/webp" />
+                    {customerType === "Business" ? (
+                      <>
+                        <Field label="Company name" className="sm:col-span-2"><input className="stitch-input" {...register("companyName", { required: true })} /></Field>
+                        <Field label="Company phone"><input className="stitch-input" type="tel" {...register("companyPhone", { required: true })} /></Field>
+                        <Field label="Company address"><input className="stitch-input" {...register("companyAddress", { required: true })} /></Field>
+                        <Field label="Business registration no. (optional)" className="sm:col-span-2"><input className="stitch-input" {...register("businessRegistrationNumber")} /></Field>
+                      </>
+                    ) : null}
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <Field label="National ID number"><input className="stitch-input" {...register("nationalIdNumber", { required: true })} /></Field>
+                    <Field label="Driver licence number"><input className="stitch-input" {...register("driverLicense", { required: true })} /></Field>
+                    <FileInput label="Licence image *" name="licenseImage" register={register} accept="image/jpeg,image/png,image/webp" />
+                    <FileInput label="Profile photo *" name="profilePhoto" register={register} accept="image/jpeg,image/png,image/webp" />
+                    <Field label="Plate number"><input className="stitch-input" {...register("plateNumber", { required: true })} /></Field>
+                    <Field label="Truck number"><input className="stitch-input" {...register("truckNumber", { required: true })} /></Field>
+                    <Field label="Truck type"><input className="stitch-input" {...register("truckType", { required: true })} /></Field>
+                    <Field label="Capacity"><input className="stitch-input" {...register("capacity", { required: true })} /></Field>
+                    <FileInput label="Truck photo 1 *" name="truckPhoto1" register={register} accept="image/jpeg,image/png,image/webp" />
+                    <FileInput label="Truck photo 2 *" name="truckPhoto2" register={register} accept="image/jpeg,image/png,image/webp" />
+                    <FileInput label="Truck registration document *" name="truckRegistrationDocument" register={register} accept="application/pdf,image/jpeg,image/png,image/webp" />
+                  </>
+                )}
 
                 {error && <p className="sm:col-span-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
                 <div className="sm:col-span-2">
@@ -262,5 +289,13 @@ function Field({ label, children, className = "" }) {
       <span className="mb-1.5 block font-medium text-on-surface-variant">{label}</span>
       {children}
     </label>
+  );
+}
+
+function FileInput({ label, name, register, accept, required = true }) {
+  return (
+    <Field label={label} className="sm:col-span-2">
+      <input className="stitch-input" type="file" accept={accept} {...register(name, { required })} />
+    </Field>
   );
 }

@@ -53,7 +53,9 @@ apiClient.interceptors.response.use(
 
 export const api = {
   health: () => apiClient.get("/health"),
-  register: (payload) => apiClient.post("/auth/register", payload),
+  register: (payload) => apiClient.post("/auth/register", payload, {
+    headers: payload instanceof FormData ? { "Content-Type": "multipart/form-data" } : undefined
+  }),
   verifyRegister: (payload) => apiClient.post("/auth/register/verify", payload),
   login: (payload) => apiClient.post("/auth/login", payload),
   verifyLogin: (payload) => apiClient.post("/auth/login/verify", payload),
