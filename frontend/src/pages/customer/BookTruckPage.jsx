@@ -53,7 +53,6 @@ export function BookTruckPage() {
       weight: "",
       preferredPickupDate: "",
       description: "",
-      specialInstructions: "",
       senderName: "",
       senderPhone: "",
       receiverName: "",
@@ -94,8 +93,6 @@ export function BookTruckPage() {
         description: formValues.description.trim(),
         submissionKey: submissionKey.current
       };
-      const instructions = formValues.specialInstructions?.trim();
-      if (instructions) payload.specialInstructions = instructions;
 
       if (formValues.customerRole === "SENDER") {
         payload.receiverName = formValues.receiverName.trim();
@@ -263,9 +260,6 @@ export function BookTruckPage() {
                     validate: (value) => value.trim().length > 0 || "Description cannot be blank"
                   })}
                 />
-              </Field>
-              <Field label="Special Instructions" className="sm:col-span-2">
-                <textarea className="stitch-input min-h-20" {...register("specialInstructions")} />
               </Field>
             </div>
           </FormSection>
