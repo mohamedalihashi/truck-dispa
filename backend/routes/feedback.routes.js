@@ -41,7 +41,7 @@ router.post("/:token", async (req, res, next) => {
       event: "feedback.thank_you",
       recipientName: name,
       recipientPhone: phone,
-      message: `Thank you for your feedback for cargo ${feedback.tripId}. Your response has been received.`,
+      message: `Mahadsanid ${name || ""}. Feedback-kaaga xamuulka ${feedback.tripId} waa la helay.`.trim(),
     })));
     res.status(201).json({ message: "Thank you. Your feedback has been submitted." });
   } catch (error) {

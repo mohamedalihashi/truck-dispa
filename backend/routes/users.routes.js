@@ -4,7 +4,8 @@ import { requireAuth, requireRole, requirePasswordChanged, requirePermission } f
 import { db } from "../services/dbService.js";
 import { generateTempPassword } from "../lib/password.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
-import { documentUpload, fileToPublicUrl } from "../lib/uploads.js";
+import { documentUpload } from "../lib/uploads.js";
+import { persistUploadedFile } from "../lib/persistUpload.js";
 import { strongPasswordSchema } from "../lib/validation.js";
 
 const router = Router();
@@ -24,7 +25,7 @@ const createSchema = z.object({
   dispatcherProfile: z.object({
     dispatcherCode: z.string().trim().min(1),
     nationalIdNumber: z.string().trim().min(1),
-    nationalIdFrontUrl: z.string().min(1),
+    nationalIdFrontUrl: z.string().min(1).optional(),
     nationalIdBackUrl: z.string().min(1),
     profilePhotoUrl: z.string().min(1),
     dateOfBirth: z.coerce.date(),
@@ -33,13 +34,13 @@ const createSchema = z.object({
     address: z.string().trim().min(1),
     cvUrl: z.string().min(1),
     yearsOfExperience: z.coerce.number().int().min(0),
-    assignedRegion: z.string().trim().min(1),
-    workShift: z.string().trim().min(1),
+    assignedRegion: z.string().trim().min(1).optional().default("N/A"),
+    workShift: z.string().trim().min(1).optional().default("N/A"),
     emergencyContactName: z.string().trim().min(1),
     emergencyContactPhone: z.string().trim().min(1),
-    commissionPercentage: z.coerce.number().min(0).max(100),
-    verificationStatus: z.enum(["Pending", "Verified", "Rejected"]).default("Pending"),
-    accountStatus: z.enum(["Active", "Inactive", "Suspended"]).default("Active")
+    commissionPercentage: z.coerce.number().min(0).max(100).optional().default(0),
+    verificationStatus: z.enum(["Pending", "Verified", "Rejected"]).optional().default("Pending"),
+    accountStatus: z.enum(["Active", "Inactive", "Suspended"]).optional().default("Active")
   }).optional(),
   truck: z
     .object({
@@ -89,7 +90,7 @@ router.get("/summary", requireRole("admin", "dispatcher"), async (_req, res, nex
 
 router.post(
   "/",
-  requireRole("admin"),
+  requireRole("admin", "dispatcher"),
   documentUpload.fields([
     { name: "truckPhoto1", maxCount: 1 },
     { name: "truckPhoto2", maxCount: 1 },
@@ -117,9 +118,12 @@ router.post(
       }
 
       const role = req.user.role === "dispatcher" ? "driver" : requestedRole;
-      const dispatcherFiles = [req.files?.nationalIdFront?.[0], req.files?.nationalIdBack?.[0], req.files?.dispatcherPhoto?.[0]];
+      const nationalIdBackUrl = await persistUploadedFile(req.files?.nationalIdBack?.[0], "dispatchers");
+      const nationalIdFrontUrl =
+        (await persistUploadedFile(req.files?.nationalIdFront?.[0], "dispatchers")) || nationalIdBackUrl;
+      const dispatcherFiles = [req.files?.nationalIdBack?.[0], req.files?.dispatcherPhoto?.[0]];
       if (role === "dispatcher" && dispatcherFiles.some((file) => !file || !imageTypes.has(file.mimetype))) {
-        return res.status(400).json({ message: "National ID front/back and profile photo must be JPEG, PNG, or WebP images" });
+        return res.status(400).json({ message: "National ID back and profile photo must be JPEG, PNG, or WebP images" });
       }
       const truckPayload =
         role === "driver"
@@ -128,11 +132,13 @@ router.post(
               plateNumber: req.body.plateNumber,
               capacity: req.body.capacity,
               truckType: req.body.truckType,
-              photoUrl1: fileToPublicUrl(req.files?.truckPhoto1?.[0]) || undefined,
-              photoUrl2: fileToPublicUrl(req.files?.truckPhoto2?.[0]) || undefined,
-              documentUrls: (req.files?.truckDocuments || [])
-                .map(fileToPublicUrl)
-                .filter(Boolean)
+              photoUrl1: (await persistUploadedFile(req.files?.truckPhoto1?.[0], "trucks")) || undefined,
+              photoUrl2: (await persistUploadedFile(req.files?.truckPhoto2?.[0], "trucks")) || undefined,
+              documentUrls: (
+                await Promise.all(
+                  (req.files?.truckDocuments || []).map((file) => persistUploadedFile(file, "truck-docs"))
+                )
+              ).filter(Boolean)
             }
           : undefined;
 
@@ -145,14 +151,25 @@ router.post(
         phone: req.body.phone || undefined,
         nationalIdNumber: role === "driver" ? req.body.nationalIdNumber || undefined : undefined,
         driverLicense: role === "driver" ? req.body.driverLicense : undefined,
-        driverLicenseUrl: role === "driver" ? fileToPublicUrl(req.files?.driverLicenseDocument?.[0]) || undefined : undefined,
-        driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) || undefined : undefined,
+        driverLicenseUrl:
+          role === "driver"
+            ? (await persistUploadedFile(req.files?.driverLicenseDocument?.[0], "licenses")) || undefined
+            : undefined,
+        driverImageUrl:
+          role === "driver"
+            ? (await persistUploadedFile(req.files?.driverImage?.[0], "drivers")) || undefined
+            : undefined,
         dispatcherProfile: role === "dispatcher" ? {
           ...req.body,
-          nationalIdFrontUrl: fileToPublicUrl(req.files?.nationalIdFront?.[0]),
-          nationalIdBackUrl: fileToPublicUrl(req.files?.nationalIdBack?.[0]),
-          profilePhotoUrl: fileToPublicUrl(req.files?.dispatcherPhoto?.[0]),
-          cvUrl: fileToPublicUrl(req.files?.dispatcherCv?.[0])
+          nationalIdFrontUrl,
+          nationalIdBackUrl,
+          profilePhotoUrl: await persistUploadedFile(req.files?.dispatcherPhoto?.[0], "dispatchers"),
+          cvUrl: await persistUploadedFile(req.files?.dispatcherCv?.[0], "dispatchers"),
+          assignedRegion: req.body.assignedRegion || "N/A",
+          workShift: req.body.workShift || "N/A",
+          commissionPercentage: req.body.commissionPercentage ?? 0,
+          verificationStatus: req.body.verificationStatus || "Pending",
+          accountStatus: req.body.accountStatus || "Active"
         } : undefined,
         truck: truckPayload
       });

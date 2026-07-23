@@ -1,5 +1,11 @@
 let app;
 
+function allowDemoSeed() {
+  if (process.env.ALLOW_DEMO_SEED === "true") return true;
+  if (process.env.VERCEL) return false;
+  return process.env.NODE_ENV !== "production";
+}
+
 export default async function handler(req, res) {
   try {
     if (!app) {
@@ -8,11 +14,13 @@ export default async function handler(req, res) {
       const { db } = await import("../backend/services/dbService.js");
 
       await connectDatabase();
-      try {
-        await db.seedIfEmpty();
-        await db.ensureAdmin();
-      } catch (error) {
-        console.warn("Database seed skipped:", error.message);
+      if (allowDemoSeed()) {
+        try {
+          await db.seedIfEmpty();
+          await db.ensureAdmin();
+        } catch (error) {
+          console.warn("Database seed skipped:", error.message);
+        }
       }
       app = createApp({ io: createNoopIo() });
     }

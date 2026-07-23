@@ -81,6 +81,16 @@ export function uploadBuffer(file, folder) {
   if (!file?.buffer) return Promise.resolve(null);
 
   if (!hasUsableCloudinaryConfig() || !configure()) {
+    if (process.env.VERCEL) {
+      return Promise.reject(
+        Object.assign(
+          new Error(
+            "Cloudinary must be configured on Vercel. Local uploads are not durable on serverless."
+          ),
+          { status: 503 }
+        )
+      );
+    }
     // Local/dev fallback when Cloudinary credentials are missing or still placeholders.
     return Promise.resolve(saveLocalBuffer(file, folder));
   }

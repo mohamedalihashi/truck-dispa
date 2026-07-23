@@ -3,6 +3,12 @@
   "installCommand": "npm run install:all && npx prisma generate --schema backend/prisma/schema.prisma",
   "buildCommand": "npm run build --prefix frontend",
   "outputDirectory": "frontend/dist",
+  "crons": [
+    {
+      "path": "/api/internal/sms-retry",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/uploads/(.*)", "destination": "/api" },

@@ -5,8 +5,9 @@ import { requireAuth, signToken, requirePasswordChanged } from "../middleware/au
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
 import { dispatchVerificationEmail, verificationPayload } from "../services/emailService.js";
-import { fileToPublicUrl, registrationUpload, upload } from "../lib/uploads.js";
+import { registrationUpload, upload } from "../lib/uploads.js";
 import { deleteAssets, uploadBuffer } from "../services/cloudinaryService.js";
+import { persistUploadedFile } from "../lib/persistUpload.js";
 import { strongPasswordSchema } from "../lib/validation.js";
 import { authLimiter, otpLimiter, passwordResetLimiter, registrationLimiter, resendLimiter } from "../middleware/security.js";
 
@@ -332,7 +333,10 @@ router.post("/me/avatar", requireAuth, requirePasswordChanged, upload.single("av
     if (!req.file) {
       return res.status(400).json({ message: "Profile photo is required" });
     }
-    const avatarUrl = fileToPublicUrl(req.file);
+    const avatarUrl = await persistUploadedFile(req.file, "avatars");
+    if (!avatarUrl) {
+      return res.status(400).json({ message: "Could not store profile photo" });
+    }
     const user = await db.updateUser(req.user.sub, { avatarUrl });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ user, message: "Profile photo updated." });

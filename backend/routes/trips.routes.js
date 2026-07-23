@@ -102,6 +102,7 @@ router.patch("/:id/status", requireRole("driver", "dispatcher", "admin"), valida
     req.app.get("io").emit("trip.status.updated", result.trip);
     if (result.notification) req.app.get("io").emit("notification.created", result.notification);
     const event = {
+      "Arrived Pickup": "cargo.arrived_pickup",
       Loaded: "cargo.picked_up",
       "In Transit": "cargo.in_transit",
       Cancelled: "cargo.cancelled",

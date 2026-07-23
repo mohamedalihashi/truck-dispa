@@ -12,8 +12,16 @@ function getConfig() {
   const apiKey = process.env.WAAFI_API_KEY;
   const apiUrl = process.env.WAAFI_API_URL || "https://api.waafipay.net/asm";
   const currency = process.env.WAAFI_CURRENCY || "SLSH";
+  const placeholder = /your[_-]?|replace-with|xxxxx|changeme|example|<|>/i;
 
-  if (!merchantUid || !apiUserId || !apiKey) {
+  if (
+    !merchantUid ||
+    !apiUserId ||
+    !apiKey ||
+    placeholder.test(merchantUid) ||
+    placeholder.test(apiUserId) ||
+    placeholder.test(apiKey)
+  ) {
     const error = new Error("WaafiPay is not configured on the server");
     error.status = 503;
     throw error;

@@ -144,12 +144,13 @@ export function navForRole(role) {
       ...common,
       { to: "requests", label: "Requests", icon: "file" },
       { to: "users", label: "Users", icon: "users" },
-      { to: "trucks", label: "Fleet", icon: "truck" },
+      { to: "trucks", label: "Fleet / Drivers", icon: "truck" },
       { to: "payments", label: "Finance", icon: "chart" },
       { to: "earnings", label: "Payouts", icon: "chart" },
       { to: "tracking", label: "Live Tracking", icon: "map" },
       { to: "reports", label: "Reports", icon: "chart" },
       { to: "audit-logs", label: "Audit Logs", icon: "file" },
+      { to: "pricing", label: "Pricing", icon: "chart" },
       { to: "settings", label: "Settings", icon: "settings" }
     ];
   }
@@ -157,7 +158,7 @@ export function navForRole(role) {
     return [
       ...common,
       { to: "requests", label: "Requests", icon: "file" },
-      { to: "drivers", label: "Drivers", icon: "users" },
+      { to: "drivers", label: "Fleet / Drivers", icon: "truck" },
       { to: "tracking", label: "Live Tracking", icon: "map" },
       { to: "earnings", label: "Earnings", icon: "chart" }
     ];

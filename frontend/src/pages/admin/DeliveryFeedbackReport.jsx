@@ -7,6 +7,17 @@ import { Modal } from "../../components/ui/Modal";
 
 const stars = (value) => value ? `${value}/5` : "—";
 
+function toLocalDateKey(value) {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    const raw = String(value);
+    return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : "";
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function DeliveryFeedbackReport() {
   const [complaintsOnly, setComplaintsOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -16,9 +27,9 @@ export function DeliveryFeedbackReport() {
   const query = useDeliveryFeedbackReport({ complaintsOnly, limit: 500 });
 
   const rows = useMemo(() => (query.data?.data || []).filter((row) => {
-    const created = row.createdAt?.slice(0, 10);
-    if (dateFrom && created < dateFrom) return false;
-    if (dateTo && created > dateTo) return false;
+    const created = toLocalDateKey(row.createdAt);
+    if (dateFrom && (!created || created < dateFrom)) return false;
+    if (dateTo && (!created || created > dateTo)) return false;
     const needle = search.trim().toLowerCase();
     return !needle || [row.tripId, row.customer, row.driver, row.senderName, row.receiverName, row.comment]
       .filter(Boolean).join(" ").toLowerCase().includes(needle);

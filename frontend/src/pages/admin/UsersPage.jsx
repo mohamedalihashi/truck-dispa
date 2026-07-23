@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Eye, Pencil, Plus, Trash2, Truck, UserCheck, UserCog, Users, UserX } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
@@ -7,14 +8,19 @@ import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { MetricCard } from "../../components/ui/MetricCard";
+import { DocumentCard, DocumentsGrid } from "../../components/ui/DocumentCard";
 import { useUserMutations, useUserSummary, useUsers } from "../../hooks/useApi";
 import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { useAuth } from "../../contexts/AuthContext";
 
-export function UsersPage() {
+/** mode="fleet" → Fleet / Drivers page (admin trucks + dispatcher drivers). */
+export function UsersPage({ mode } = {}) {
   const { user: authUser } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isDispatcher = authUser.role === "dispatcher";
-  const [role, setRole] = useState(isDispatcher ? "driver" : "");
+  const isFleet = mode === "fleet" || isDispatcher;
+  const [role, setRole] = useState(isFleet ? "driver" : "");
   const { search, hasSearch } = useDashboardSearch();
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
@@ -25,18 +31,17 @@ export function UsersPage() {
   const [driverImage, setDriverImage] = useState(null);
   const [driverLicenseDocument, setDriverLicenseDocument] = useState(null);
   const [truckDocuments, setTruckDocuments] = useState([]);
-  const [nationalIdFront, setNationalIdFront] = useState(null);
   const [nationalIdBack, setNationalIdBack] = useState(null);
   const [dispatcherPhoto, setDispatcherPhoto] = useState(null);
   const [dispatcherCv, setDispatcherCv] = useState(null);
   const [photo1Preview, setPhoto1Preview] = useState("");
-  const { data, isLoading } = useUsers({ role: role || undefined, search: search || undefined });
+  const { data, isLoading } = useUsers({ role: isFleet ? "driver" : role || undefined, search: search || undefined });
   const { data: summary } = useUserSummary();
   const mutations = useUserMutations();
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" }
+    defaultValues: { role: isFleet ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" }
   });
-  const selectedRole = isDispatcher ? "driver" : watch("role");
+  const selectedRole = isFleet ? "driver" : watch("role");
 
   function openCreate() {
     setEditing(null);
@@ -46,14 +51,20 @@ export function UsersPage() {
     setDriverImage(null);
     setDriverLicenseDocument(null);
     setTruckDocuments([]);
-    setNationalIdFront(null);
     setNationalIdBack(null);
     setDispatcherPhoto(null);
     setDispatcherCv(null);
     setPhoto1Preview("");
-    reset({ role: isDispatcher ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" });
+    reset({ role: isFleet ? "driver" : "customer", truckType: "", capacity: "12 tons", status: "Active" });
     setOpen(true);
   }
+
+  useEffect(() => {
+    if (!location.state?.openCreate) return;
+    openCreate();
+    navigate(".", { replace: true, state: {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.openCreate]);
 
   function openEdit(user) {
     if (user.isSuperAdmin && !authUser.isSuperAdmin) {
@@ -91,7 +102,7 @@ export function UsersPage() {
         await mutations.update.mutateAsync({ id: editing.id, payload });
       } else {
         let result;
-        const createRole = isDispatcher ? "driver" : values.role;
+        const createRole = isFleet ? "driver" : values.role;
         if (createRole === "driver") {
           if (!truckPhoto1 || !driverImage || !driverLicenseDocument || truckDocuments.length === 0) {
             setError("Driver license document, driver photo, one truck photo, and at least one truck document are required.");
@@ -114,16 +125,29 @@ export function UsersPage() {
           truckDocuments.forEach((file) => formData.append("truckDocuments", file));
           result = await mutations.create.mutateAsync(formData);
         } else if (createRole === "dispatcher") {
-          if (!nationalIdFront || !nationalIdBack || !dispatcherPhoto || !dispatcherCv) {
-            setError("National ID images, profile photo, and CV are required.");
+          if (!nationalIdBack || !dispatcherPhoto || !dispatcherCv) {
+            setError("National ID back, profile photo, and CV are required.");
             return;
           }
           const formData = new FormData();
-          ["name", "username", "email", "phone", "dispatcherCode", "nationalIdNumber", "dateOfBirth", "gender", "city", "address", "yearsOfExperience", "assignedRegion", "workShift", "emergencyContactName", "emergencyContactPhone", "commissionPercentage", "verificationStatus", "accountStatus"].forEach((key) => {
+          [
+            "name",
+            "username",
+            "email",
+            "phone",
+            "dispatcherCode",
+            "nationalIdNumber",
+            "dateOfBirth",
+            "gender",
+            "city",
+            "address",
+            "yearsOfExperience",
+            "emergencyContactName",
+            "emergencyContactPhone"
+          ].forEach((key) => {
             if (values[key] !== undefined && values[key] !== "") formData.append(key, values[key]);
           });
           formData.append("role", "dispatcher");
-          formData.append("nationalIdFront", nationalIdFront);
           formData.append("nationalIdBack", nationalIdBack);
           formData.append("dispatcherPhoto", dispatcherPhoto);
           formData.append("dispatcherCv", dispatcherCv);
@@ -172,14 +196,16 @@ export function UsersPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={isDispatcher ? "Drivers" : "Users"}
+        title={isFleet ? "Fleet / Drivers" : "Users"}
         subtitle={
-          isDispatcher
-            ? "Register drivers together with their truck and photos."
+          isFleet
+            ? "Register a driver together with their truck, photos, and documents."
             : "Manage admins, dispatchers, customers, and driver-truck accounts."
         }
         actions={
-          !isDispatcher ? <Button onClick={openCreate}><Plus size={16} /> Add user</Button> : null
+          <Button onClick={openCreate}>
+            <Plus size={16} /> {isFleet ? "Add Truck" : "Add user"}
+          </Button>
         }
       />
 
@@ -189,8 +215,8 @@ export function UsersPage() {
         </p>
       )}
 
-      <section className={`grid grid-cols-2 gap-3 ${isDispatcher ? "md:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-6"}`}>
-        {isDispatcher ? (
+      <section className={`grid grid-cols-2 gap-3 ${isFleet ? "md:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-6"}`}>
+        {isFleet ? (
           <>
             <MetricCard icon={Users} label="Total Drivers" value={summary?.drivers ?? "—"} tone="navy" />
             <MetricCard icon={UserCheck} label="Active Drivers" value={summary?.driverActive ?? "—"} tone="green" />
@@ -214,7 +240,7 @@ export function UsersPage() {
             Showing results for <span className="font-semibold text-on-surface">&quot;{search}&quot;</span>
           </p>
         ) : null}
-        {!isDispatcher ? (
+        {!isFleet ? (
           <select
             className="stitch-input max-w-xs"
             value={role}
@@ -231,24 +257,33 @@ export function UsersPage() {
 
       <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
         <div className="border-b border-outline-variant px-6 py-5">
-          <h2 className="text-xl font-semibold text-primary-container">Directory</h2>
+          <h2 className="text-xl font-semibold text-on-surface">{isFleet ? "Drivers & trucks" : "Directory"}</h2>
         </div>
         {isLoading ? (
-          <p className="py-10 text-center text-sm text-on-surface-variant">{isDispatcher ? "Loading drivers…" : "Loading users…"}</p>
+          <p className="py-10 text-center text-sm text-on-surface-variant">{isFleet ? "Loading fleet…" : "Loading users…"}</p>
         ) : (
           <DataTable
             rows={data?.data || []}
             columns={[
               { key: "name", label: "Name" },
               { key: "email", label: "Email" },
-              ...(!isDispatcher ? [{
+              ...(!isFleet ? [{
                 key: "role",
                 label: "Role",
                 render: (row) => row.isSuperAdmin ? "Super Admin" : row.role
-              }] : []),
+              }] : [
+                { key: "truckNumber", label: "Truck", render: (row) => row.truckNumber || "—" },
+                { key: "plateNumber", label: "Plate", render: (row) => row.plateNumber || "—" },
+                { key: "truckType", label: "Type", render: (row) => row.truckType || "—" },
+                {
+                  key: "truckStatus",
+                  label: "Truck status",
+                  render: (row) => row.truckStatus ? <StatusBadge status={row.truckStatus} /> : "—"
+                }
+              ]),
               {
                 key: "status",
-                label: "Status",
+                label: isFleet ? "Driver status" : "Status",
                 render: (row) => <StatusBadge status={row.status} />
               },
               {
@@ -295,15 +330,25 @@ export function UsersPage() {
             <Detail label="Phone" value={viewing.phone || "—"} />
             <Detail label="Role" value={viewing.isSuperAdmin ? "Super Admin" : viewing.role} />
             <Detail label="Status" value={<StatusBadge status={viewing.status} />} />
-            <Detail label="Truck number" value={viewing.truckNumber || "—"} />
-            <Detail label="Plate" value={viewing.plateNumber || "—"} />
-            <Detail label="Truck type" value={viewing.truckType || "—"} />
-            <Detail label="Capacity" value={viewing.capacity || "—"} />
-            <Detail label="Truck status" value={viewing.truckStatus ? <StatusBadge status={viewing.truckStatus} /> : "—"} />
             {viewing.role === "driver" ? (
               <>
-                <Detail label="Driver license" value={viewing.driverLicense || "—"} />
-                <Detail label="Truck documents" value={`${viewing.truckDocumentUrls?.length || 0} uploaded`} />
+                <Detail label="Truck number" value={viewing.truckNumber || "—"} />
+                <Detail label="Plate" value={viewing.plateNumber || "—"} />
+                <Detail label="Truck type" value={viewing.truckType || "—"} />
+                <Detail label="Capacity" value={viewing.capacity || "—"} />
+                <Detail label="Truck status" value={viewing.truckStatus ? <StatusBadge status={viewing.truckStatus} /> : "—"} />
+                <Detail label="Driver license no." value={viewing.driverLicense || "—"} />
+                <Detail label="National ID" value={viewing.nationalIdNumber || "—"} />
+              </>
+            ) : null}
+            {viewing.role === "dispatcher" && viewing.dispatcherProfile ? (
+              <>
+                <Detail label="Dispatcher code" value={viewing.dispatcherProfile.dispatcherCode || "—"} />
+                <Detail label="National ID" value={viewing.dispatcherProfile.nationalIdNumber || "—"} />
+                <Detail label="City" value={viewing.dispatcherProfile.city || "—"} />
+                <Detail label="Address" value={viewing.dispatcherProfile.address || "—"} />
+                <Detail label="Experience" value={viewing.dispatcherProfile.yearsOfExperience ?? "—"} />
+                <Detail label="Verification" value={viewing.dispatcherProfile.verificationStatus || "—"} />
               </>
             ) : null}
             <Detail
@@ -312,6 +357,37 @@ export function UsersPage() {
               className="sm:col-span-2"
             />
           </dl>
+
+          {viewing.role === "driver" && (
+            <DocumentsGrid title="Driver & truck documents">
+              <DocumentCard
+                label="Driver license"
+                url={viewing.driverLicenseUrl}
+                meta={viewing.driverLicense ? `No. ${viewing.driverLicense}` : undefined}
+              />
+              <DocumentCard label="Driver photo" url={viewing.driverImageUrl} />
+              <DocumentCard label="Truck photo" url={viewing.truckPhotoUrl1} />
+              {(viewing.truckDocumentUrls || []).length
+                ? viewing.truckDocumentUrls.map((url, index) => (
+                    <DocumentCard key={`${url}-${index}`} label={`Truck document ${index + 1}`} url={url} />
+                  ))
+                : <DocumentCard label="Truck documents" url={null} />}
+            </DocumentsGrid>
+          )}
+
+          {viewing.role === "dispatcher" && (
+            <DocumentsGrid title="Dispatcher documents">
+              <DocumentCard
+                label="National ID front"
+                url={viewing.dispatcherProfile?.nationalIdFrontUrl}
+                meta={viewing.dispatcherProfile?.nationalIdNumber ? `ID ${viewing.dispatcherProfile.nationalIdNumber}` : undefined}
+              />
+              <DocumentCard label="National ID back" url={viewing.dispatcherProfile?.nationalIdBackUrl} />
+              <DocumentCard label="Profile photo" url={viewing.dispatcherProfile?.profilePhotoUrl || viewing.avatarUrl} />
+              <DocumentCard label="CV" url={viewing.dispatcherProfile?.cvUrl} />
+            </DocumentsGrid>
+          )}
+
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
             {!isDispatcher && (!viewing.isSuperAdmin || authUser.isSuperAdmin) ? (
@@ -323,7 +399,7 @@ export function UsersPage() {
 
       {open && (
         <Modal
-          title={editing ? (isDispatcher ? "Edit driver" : "Edit user") : (isDispatcher ? "Add driver" : "Create user")}
+          title={editing ? (isFleet ? "Edit driver" : "Edit user") : (isFleet ? "Add Truck" : "Create user")}
           onClose={() => setOpen(false)}
           wide
         >
@@ -344,7 +420,7 @@ export function UsersPage() {
                 A temporary password will be emailed automatically. The driver must set a new password on first sign-in.
               </p>
             )}
-            {!isDispatcher ? (
+            {!isFleet ? (
               <select className="stitch-input" {...register("role")}>
                 <option value="customer">Customer</option>
                 <option value="dispatcher">Dispatcher</option>
@@ -417,14 +493,8 @@ export function UsersPage() {
                 <input className="stitch-input" placeholder="City" {...register("city", { required: true })} />
                 <input className="stitch-input" placeholder="Address" {...register("address", { required: true })} />
                 <input className="stitch-input" type="number" min="0" placeholder="Years of experience" {...register("yearsOfExperience", { required: true })} />
-                <input className="stitch-input" placeholder="Assigned region" {...register("assignedRegion", { required: true })} />
-                <input className="stitch-input" placeholder="Work shift" {...register("workShift", { required: true })} />
                 <input className="stitch-input" placeholder="Emergency contact name" {...register("emergencyContactName", { required: true })} />
                 <input className="stitch-input" placeholder="Emergency contact phone" {...register("emergencyContactPhone", { required: true })} />
-                <input className="stitch-input" type="number" min="0" max="100" step="0.01" placeholder="Commission %" {...register("commissionPercentage", { required: true })} />
-                <select className="stitch-input" {...register("verificationStatus")}><option>Pending</option><option>Verified</option><option>Rejected</option></select>
-                <select className="stitch-input" {...register("accountStatus")}><option>Active</option><option>Inactive</option><option>Suspended</option></select>
-                <FileField label="National ID front *" accept="image/jpeg,image/png,image/webp" onChange={setNationalIdFront} />
                 <FileField label="National ID back *" accept="image/jpeg,image/png,image/webp" onChange={setNationalIdBack} />
                 <FileField label="Profile photo *" accept="image/jpeg,image/png,image/webp" onChange={setDispatcherPhoto} />
                 <FileField label="CV *" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={setDispatcherCv} />
@@ -436,7 +506,7 @@ export function UsersPage() {
                 Cancel
               </Button>
               <Button disabled={isSubmitting || mutations.create.isPending || mutations.update.isPending}>
-                {editing ? "Save changes" : (isDispatcher ? "Register driver" : "Create")}
+                {editing ? "Save changes" : (isFleet ? "Register truck" : "Create")}
               </Button>
             </div>
           </form>

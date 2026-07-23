@@ -1,36 +1,66 @@
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Check, CreditCard, X } from "lucide-react";
 import { Button } from "./ui/Button";
-import { money } from "../utils/helpers";
+import { PriceBreakdown } from "./PriceBreakdown";
+import { usePricingMutations } from "../hooks/useApi";
 
 export function QuoteReviewPanel({ request, onAccept, onReject, loading, error }) {
   const [note, setNote] = useState("");
+  const navigate = useNavigate();
+  const pricing = usePricingMutations();
 
   if (!request) return null;
+
+  const canPay = ["Approved", "Assigned", "Accepted", "Arrived Pickup", "Loaded", "In Transit", "Delivered"].includes(
+    request.status
+  );
+
+  async function handlePay() {
+    const result = await pricing.pay.mutateAsync(request.id);
+    navigate(result.payPath || "/customer/payments");
+  }
 
   return (
     <div className="rounded-xl border border-secondary-container/30 bg-secondary-container/10 p-4">
       <p className="text-sm font-semibold text-on-surface">Quotation for review</p>
       <p className="mt-1 text-xs text-on-surface-variant">
-        Review the price and estimated delivery time from dispatch.
+        Review the calculated price, any dispatcher adjustment, and estimated delivery time.
       </p>
 
-      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-on-surface-variant">Price</dt>
-          <dd className="mt-1 text-lg font-bold text-primary">{money(request.quotedPrice)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-on-surface-variant">Estimated time</dt>
-          <dd className="mt-1 font-semibold text-on-surface">{request.quotedEstimatedTime}</dd>
-        </div>
-        {request.quoteNotes ? (
-          <div className="sm:col-span-2">
-            <dt className="text-xs uppercase tracking-wide text-on-surface-variant">Notes</dt>
-            <dd className="mt-1 text-sm text-on-surface">{request.quoteNotes}</dd>
-          </div>
-        ) : null}
-      </dl>
+      <div className="mt-4">
+        <PriceBreakdown
+          distanceKm={request.distanceKm}
+          weight={request.weight}
+          calculatedPrice={request.calculatedPrice}
+          adjustmentType={request.adjustmentType}
+          adjustmentAmount={request.adjustmentAmount}
+          adjustmentReason={request.adjustmentReason}
+          finalPrice={request.finalPrice ?? request.quotedPrice}
+          quotedPrice={request.quotedPrice}
+          status={request.status}
+          quoteStatus={
+            request.status === "Awaiting Approval"
+              ? "Waiting for Approval"
+              : request.status === "Quote Rejected"
+                ? "Rejected"
+                : request.status === "Approved"
+                  ? "Accepted"
+                  : undefined
+          }
+        />
+      </div>
+
+      {request.quotedEstimatedTime ? (
+        <p className="mt-3 text-sm text-on-surface-variant">
+          Estimated time: <strong className="text-on-surface">{request.quotedEstimatedTime}</strong>
+        </p>
+      ) : null}
+      {request.quoteNotes ? (
+        <p className="mt-2 text-sm text-on-surface-variant">
+          Notes: <span className="text-on-surface">{request.quoteNotes}</span>
+        </p>
+      ) : null}
 
       {request.status === "Awaiting Approval" ? (
         <>
@@ -57,6 +87,18 @@ export function QuoteReviewPanel({ request, onAccept, onReject, loading, error }
             </Button>
           </div>
         </>
+      ) : null}
+
+      {canPay ? (
+        <div className="mt-4">
+          <Button type="button" onClick={handlePay} disabled={pricing.pay.isPending}>
+            <CreditCard size={16} />
+            {pricing.pay.isPending ? "Preparing…" : "Pay online"}
+          </Button>
+          {pricing.pay.isError ? (
+            <p className="mt-2 text-sm text-error">{pricing.pay.error.message}</p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

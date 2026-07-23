@@ -8,7 +8,8 @@ const maskName = (name) => {
 };
 
 export async function createFeedbackToken(tripId) {
-  const token = crypto.randomBytes(32).toString("base64url");
+  // Short token for SMS (~8 chars) while DB stores only the hash.
+  const token = crypto.randomBytes(6).toString("base64url");
   const tokenHash = hashToken(token);
   await prisma.deliveryFeedbackToken.upsert({
     where: { tripId },
@@ -19,9 +20,11 @@ export async function createFeedbackToken(tripId) {
 }
 
 async function resolveToken(token) {
-  if (!token || token.length < 32) return null;
+  const cleaned = String(token || "").trim();
+  // Accept short SMS tokens (8+) and longer legacy links (32+).
+  if (!cleaned || cleaned.length < 8) return null;
   return prisma.deliveryFeedbackToken.findUnique({
-    where: { tokenHash: hashToken(token) },
+    where: { tokenHash: hashToken(cleaned) },
     include: {
       trip: {
         include: { cargoRequest: true, driver: true, feedback: true },

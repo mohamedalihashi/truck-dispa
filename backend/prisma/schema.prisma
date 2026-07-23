@@ -48,6 +48,14 @@ enum RequestStatus {
   @@map("request_status")
 }
 
+enum PriceAdjustmentType {
+  Increase
+  Discount
+  Fixed
+
+  @@map("price_adjustment_type")
+}
+
 enum TripStatus {
   Pending
   Assigned
@@ -248,6 +256,14 @@ model CargoRequest {
   submissionKey         String?       @unique @map("submission_key") @db.Uuid
   specialInstructions   String?       @map("special_instructions")
   preferredPickupDate   DateTime?     @map("preferred_pickup_date") @db.Date
+  distanceKm            Decimal?      @map("distance_km") @db.Decimal(12, 2)
+  calculatedPrice       Decimal?      @map("calculated_price") @db.Decimal(12, 2)
+  adjustmentType        PriceAdjustmentType? @map("adjustment_type")
+  adjustmentAmount      Decimal?      @map("adjustment_amount") @db.Decimal(12, 2)
+  adjustmentReason      String?       @map("adjustment_reason")
+  finalPrice            Decimal?      @map("final_price") @db.Decimal(12, 2)
+  approvedByDispatcher  String?       @map("approved_by_dispatcher") @db.Uuid
+  approvedAt            DateTime?     @map("approved_at") @db.Timestamptz()
   quotedPrice           Decimal?      @map("quoted_price") @db.Decimal(12, 2)
   quotedEstimatedTime   String?       @map("quoted_estimated_time")
   quoteNotes            String?       @map("quote_notes")
@@ -392,6 +408,20 @@ model Setting {
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz()
 
   @@map("settings")
+}
+
+model PricingSettings {
+  id               String   @id @default("default")
+  baseFee          Decimal  @default(20) @map("base_fee") @db.Decimal(12, 2)
+  pricePerKm       Decimal  @default(10) @map("price_per_km") @db.Decimal(12, 2)
+  pricePerTon      Decimal  @default(5) @map("price_per_ton") @db.Decimal(12, 2)
+  minimumCharge    Decimal  @default(50) @map("minimum_charge") @db.Decimal(12, 2)
+  maximumCharge    Decimal? @map("maximum_charge") @db.Decimal(12, 2)
+  automaticPricing Boolean  @default(true) @map("automatic_pricing")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("pricing_settings")
 }
 
 model AuditLog {

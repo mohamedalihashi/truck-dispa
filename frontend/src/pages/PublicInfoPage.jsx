@@ -15,7 +15,8 @@ const PAGES = {
     title: "Contact",
     body: [
       "Need help with booking, dispatch, or your account?",
-      "Email support: support@truckdispatch.local",
+      `Email support: ${import.meta.env.VITE_SUPPORT_EMAIL || "support@truckdispatch.so"}`,
+      `Phone / WhatsApp: ${import.meta.env.VITE_SUPPORT_PHONE || "+252 61 XXX XXXX"}`,
       "For account access issues, use Forgot Password on the login page, or ask your admin to reset your user."
     ]
   },
@@ -43,7 +44,12 @@ const PAGES = {
       "By using TruckDispatch you agree to provide accurate booking, vehicle, and contact information.",
       "Dispatchers and drivers are responsible for trip updates and delivery proof. Customers are responsible for timely payment after confirmed delivery.",
       "The platform may suspend accounts that abuse quotes, fake GPS, or payment disputes.",
-      "These terms are a working product notice and should be reviewed by your legal advisor before public launch."
+      "These terms govern use of the TruckDispatch marketplace for cargo booking, dispatch, tracking, and payments in Somalia.",
+      "By using TruckDispatch you agree to provide accurate booking, vehicle, and contact information.",
+      "Dispatchers and drivers are responsible for trip updates and delivery proof. Customers are responsible for timely payment after confirmed delivery.",
+      "The platform may suspend accounts that abuse quotes, fake GPS, or payment disputes.",
+      "Platform commission and payout rules follow the admin commission settings at the time of payment.",
+      "Contact support for dispute escalation. These terms may be updated; continued use means acceptance of the latest version."
     ]
   },
   privacy: {
@@ -52,7 +58,8 @@ const PAGES = {
       "We store account data (name, email, phone, role), cargo and trip records, GPS points during active trips, payment references, and uploaded proof images.",
       "Payment card data is not stored by TruckDispatch; mobile wallet charges go through WaafiPay.",
       "Location history is used for live tracking and dispute support. Access is limited by role permissions.",
-      "Contact support to request account correction or deletion subject to legal and operational retention needs."
+      "Documents such as licenses, national ID images, and truck papers are stored for verification and operational use.",
+      `Contact ${import.meta.env.VITE_SUPPORT_EMAIL || "support@truckdispatch.so"} to request account correction or deletion subject to legal and operational retention needs.`
     ]
   }
 };

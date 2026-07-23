@@ -5,50 +5,57 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-background: #f8f9fa;
-  --color-surface: #f8f9fa;
-  --color-surface-dim: #d9dadb;
-  --color-surface-bright: #f8f9fa;
+  /* Light: white surfaces, black text, orange accent */
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-dim: #e8eaed;
+  --color-surface-bright: #ffffff;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f3f4f5;
-  --color-surface-container: #edeeef;
-  --color-surface-container-high: #e7e8e9;
-  --color-surface-container-highest: #e1e3e4;
-  --color-surface-variant: #e1e3e4;
-  --color-surface-tint: #515f78;
+  --color-surface-container-low: #f7f8f9;
+  --color-surface-container: #f0f1f3;
+  --color-surface-container-high: #e8eaed;
+  --color-surface-container-highest: #e1e3e6;
+  --color-surface-variant: #e8eaed;
+  --color-surface-tint: #fe6b00;
 
-  --color-on-surface: #191c1d;
-  --color-on-surface-variant: #44474d;
-  --color-on-background: #191c1d;
+  --color-on-surface: #0a0a0a;
+  --color-on-surface-variant: #3d4450;
+  --color-on-background: #0a0a0a;
 
-  --color-primary: #0d1c32;
+  --color-primary: #0a0a0a;
   --color-primary-container: #0d1c32;
   --color-on-primary: #ffffff;
-  --color-on-primary-container: #76849f;
-  --color-on-primary-fixed: #0d1c32;
-  --color-on-primary-fixed-variant: #39475f;
-  --color-primary-fixed: #d6e3ff;
-  --color-primary-fixed-dim: #b9c7e4;
-  --color-inverse-primary: #b9c7e4;
+  --color-on-primary-container: #d6e3ff;
+  --color-on-primary-fixed: #0a0a0a;
+  --color-on-primary-fixed-variant: #3d4450;
+  --color-primary-fixed: #ffdbcc;
+  --color-primary-fixed-dim: #ffb693;
+  --color-inverse-primary: #ffb693;
 
-  --color-secondary: #a04100;
+  --color-secondary: #c45000;
   --color-secondary-container: #fe6b00;
   --color-on-secondary: #ffffff;
-  --color-on-secondary-container: #572000;
+  --color-on-secondary-container: #ffffff;
   --color-secondary-fixed: #ffdbcc;
   --color-secondary-fixed-dim: #ffb693;
   --color-on-secondary-fixed: #351000;
   --color-on-secondary-fixed-variant: #7a3000;
 
-  --color-tertiary: #001356;
-  --color-tertiary-container: #001356;
-  --color-on-tertiary: #ffffff;
-  --color-on-tertiary-container: #5979ff;
-  --color-tertiary-fixed: #dde1ff;
-  --color-tertiary-fixed-dim: #b8c3ff;
+  --color-sidebar: #0d1c32;
+  --color-on-sidebar: #ffffff;
+  --color-sidebar-muted: rgba(255, 255, 255, 0.55);
+  --color-sidebar-border: rgba(255, 255, 255, 0.12);
+  --color-sidebar-hover: rgba(254, 107, 0, 0.18);
 
-  --color-outline: #75777e;
-  --color-outline-variant: #c5c6cd;
+  --color-tertiary: #0d1c32;
+  --color-tertiary-container: #0d1c32;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #ffb693;
+  --color-tertiary-fixed: #ffdbcc;
+  --color-tertiary-fixed-dim: #ffb693;
+
+  --color-outline: #6b7280;
+  --color-outline-variant: #d1d5db;
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
   --color-on-error: #ffffff;
@@ -72,7 +79,7 @@
   --spacing-container-margin: 24px;
   --spacing-card-padding: 24px;
 
-  --shadow-card: 0px 4px 20px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0px 4px 20px rgba(0, 0, 0, 0.06);
   --shadow-card-hover: 0px 8px 24px rgba(0, 0, 0, 0.1);
 }
 
@@ -81,6 +88,7 @@
     color-scheme: light;
   }
 
+  /* Dark: one dark family for sidebar + content; orange accent; light text */
   html.dark {
     color-scheme: dark;
 
@@ -94,21 +102,22 @@
     --color-surface-container-high: #262d38;
     --color-surface-container-highest: #2b333f;
     --color-surface-variant: #2e3747;
-    --color-surface-tint: #8b9dc0;
+    --color-surface-tint: #fe6b00;
 
-    --color-on-surface: #e8eaed;
-    --color-on-surface-variant: #a8aeb8;
-    --color-on-background: #e8eaed;
+    --color-on-surface: #f3f4f6;
+    --color-on-surface-variant: #b0b6c0;
+    --color-on-background: #f3f4f6;
 
-    --color-primary: #c5d4f0;
-    --color-primary-container: #0d1c32;
-    --color-on-primary: #0d1c32;
-    --color-on-primary-container: #b8c8e4;
-    --color-on-primary-fixed: #d6e3ff;
-    --color-on-primary-fixed-variant: #b9c7e4;
-    --color-primary-fixed: #1a2740;
-    --color-primary-fixed-dim: #152238;
-    --color-inverse-primary: #39475f;
+    /* Text/headings in dark = light (never navy on navy) */
+    --color-primary: #f3f4f6;
+    --color-primary-container: #151a22;
+    --color-on-primary: #0f1318;
+    --color-on-primary-container: #f3f4f6;
+    --color-on-primary-fixed: #f3f4f6;
+    --color-on-primary-fixed-variant: #b0b6c0;
+    --color-primary-fixed: #1c222c;
+    --color-primary-fixed-dim: #151a22;
+    --color-inverse-primary: #0d1c32;
 
     --color-secondary: #ffb693;
     --color-secondary-container: #fe6b00;
@@ -119,12 +128,19 @@
     --color-on-secondary-fixed: #ffdbcc;
     --color-on-secondary-fixed-variant: #ffb693;
 
-    --color-tertiary: #b8c3ff;
-    --color-tertiary-container: #001356;
-    --color-on-tertiary: #dde1ff;
-    --color-on-tertiary-container: #8fa8ff;
-    --color-tertiary-fixed: #0a1540;
-    --color-tertiary-fixed-dim: #001356;
+    /* Sidebar stays navy in both themes (does not follow light/dark surfaces) */
+    --color-sidebar: #0d1c32;
+    --color-on-sidebar: #ffffff;
+    --color-sidebar-muted: rgba(255, 255, 255, 0.55);
+    --color-sidebar-border: rgba(255, 255, 255, 0.12);
+    --color-sidebar-hover: rgba(254, 107, 0, 0.22);
+
+    --color-tertiary: #ffb693;
+    --color-tertiary-container: #1c222c;
+    --color-on-tertiary: #0f1318;
+    --color-on-tertiary-container: #ffb693;
+    --color-tertiary-fixed: #1c222c;
+    --color-tertiary-fixed-dim: #151a22;
 
     --color-outline: #8b929e;
     --color-outline-variant: #3d4654;
@@ -195,19 +211,24 @@
     font: inherit;
   }
 
-  html.dark .text-primary-container {
-    color: #c5d4f0;
+  /*
+   * Many pages use text-primary-container for body/headings.
+   * Keep those as readable ink (black in light, light gray in dark),
+   * while bg-primary-container stays navy (light) / charcoal (dark).
+   */
+  .text-primary-container {
+    color: var(--color-on-surface) !important;
   }
 
   html.dark .bg-primary-container {
-    color: #ffffff;
+    color: var(--color-on-primary-container);
   }
 }
 
 @layer components {
   .stitch-card {
     background: var(--color-surface-container-lowest);
-    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent);
     border-radius: 0.75rem;
     box-shadow: var(--shadow-card);
     padding: var(--spacing-card-padding);
@@ -233,6 +254,50 @@
     color: var(--color-on-surface-variant);
   }
 
+  .app-sidebar {
+    background: var(--color-sidebar);
+    color: var(--color-on-sidebar);
+    border-color: var(--color-sidebar-border);
+  }
+
+  .app-sidebar-divider {
+    border-color: var(--color-sidebar-border);
+  }
+
+  .app-sidebar-muted {
+    color: var(--color-sidebar-muted);
+  }
+
+  .app-sidebar-link {
+    color: var(--color-on-sidebar);
+  }
+
+  .app-sidebar-link:hover {
+    background: var(--color-sidebar-hover);
+    color: var(--color-on-sidebar);
+  }
+
+  .app-sidebar-link-active {
+    background: var(--color-secondary-container);
+    color: #ffffff;
+  }
+
+  .app-sidebar-chip {
+    background: color-mix(in srgb, var(--color-on-sidebar) 8%, transparent);
+    color: var(--color-sidebar-muted);
+  }
+
+  .app-sidebar-outline {
+    border-color: var(--color-sidebar-border);
+    color: var(--color-on-sidebar);
+  }
+
+  .app-sidebar-outline:hover {
+    border-color: var(--color-secondary-container);
+    background: var(--color-secondary-container);
+    color: #ffffff;
+  }
+
   .hero-gradient {
     background: linear-gradient(135deg, #0d1c32 0%, #1a2a44 100%);
   }
@@ -242,13 +307,13 @@
   }
 
   .glass-effect {
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.88);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(0, 0, 0, 0.06);
   }
 
   .dark .glass-effect {
-    background: rgba(23, 28, 36, 0.82);
+    background: rgba(23, 28, 36, 0.88);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 

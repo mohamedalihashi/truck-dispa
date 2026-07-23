@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ChevronDown, Pencil, Plus, Trash2, Truck, Wrench, XCircle, CheckCircle2 } from "lucide-react";
@@ -11,6 +12,7 @@ import { Modal } from "../../components/ui/Modal";
 import { MetricCard } from "../../components/ui/MetricCard";
 
 export function TrucksPage() {
+  const navigate = useNavigate();
   const { search } = useDashboardSearch();
   const { data, isLoading } = useTrucks({ search: search || undefined });
   const { data: summary } = useTruckSummary();
@@ -27,10 +29,7 @@ export function TrucksPage() {
   const availableDrivers = (drivers?.data || []).filter((d) => !assignedDriverIds.has(d.id) || editing?.driverId === d.id);
 
   function openCreate() {
-    setEditing(null);
-    setError("");
-    reset({ truckType: "", capacity: "12 tons", status: "Available" });
-    setOpen(true);
+    navigate("/admin/trucks", { state: { openCreate: true } });
   }
 
   function openEdit(truck) {
@@ -99,11 +98,11 @@ export function TrucksPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Fleet"
-        subtitle="Each truck is permanently owned by one driver account."
+        title="Fleet status"
+        subtitle="Update truck availability. To register a new truck with a driver, use Fleet / Drivers → Add Truck."
         actions={
           <Button onClick={openCreate}>
-            <Plus size={16} /> Add truck
+            <Plus size={16} /> Add Truck
           </Button>
         }
       />

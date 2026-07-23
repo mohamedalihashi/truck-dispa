@@ -350,6 +350,48 @@ export function useSettings(options = {}) {
   });
 }
 
+export function usePricing(options = {}) {
+  return useQuery({
+    queryKey: ["pricing"],
+    queryFn: () => api.getPricing(),
+    ...options
+  });
+}
+
+export function usePricingMutations() {
+  const qc = useQueryClient();
+  return {
+    save: useMutation({
+      mutationFn: (payload) => api.updatePricing(payload),
+      onSuccess: (data) => {
+        qc.setQueryData(["pricing"], data);
+        qc.invalidateQueries({ queryKey: ["pricing"] });
+      }
+    }),
+    calculate: useMutation({
+      mutationFn: (id) => api.calculateQuote(id),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+        qc.invalidateQueries({ queryKey: ["cargo-request-summary"] });
+      }
+    }),
+    adjust: useMutation({
+      mutationFn: ({ id, ...payload }) => api.adjustQuotePrice(id, payload),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+        qc.invalidateQueries({ queryKey: ["cargo-request-summary"] });
+      }
+    }),
+    pay: useMutation({
+      mutationFn: (id) => api.payQuote(id),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["payments"] });
+        qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+      }
+    })
+  };
+}
+
 export function usePermissions() {
   return useQuery({
     queryKey: ["permissions"],

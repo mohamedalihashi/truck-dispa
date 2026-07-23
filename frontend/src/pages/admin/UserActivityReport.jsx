@@ -44,22 +44,32 @@ function localDate(date) {
 
 function rangeFor(preset, customFrom, customTo) {
   const now = new Date();
-  let start = new Date(now);
-  let end = new Date(now);
-  if (preset === "custom") return { from: customFrom ? `${customFrom}T00:00:00` : "", to: customTo ? `${customTo}T23:59:59.999` : "" };
+  let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  if (preset === "custom") {
+    return {
+      from: customFrom ? `${customFrom}T00:00:00` : "",
+      to: customTo ? `${customTo}T23:59:59.999` : ""
+    };
+  }
   if (preset === "yesterday") {
     start.setDate(start.getDate() - 1);
     end = new Date(start);
+    end.setHours(23, 59, 59, 999);
   } else if (preset === "week") {
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   } else if (preset === "month") {
-    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   } else if (preset === "year") {
-    start = new Date(now.getFullYear(), 0, 1);
+    start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
   }
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
-  return { from: start.toISOString(), to: end.toISOString() };
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = (d) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+
+  return { from: stamp(start), to: stamp(end) };
 }
 
 function csvCell(value) {

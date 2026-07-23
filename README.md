@@ -440,47 +440,57 @@ npm run prisma:generate
 One Vercel project serves the React app and the Express API (`api/index.js` serverless function).
 
 1. Import repo at [vercel.com/new](https://vercel.com/new) (root directory = repo root, not `frontend/`)
-2. Add **Environment Variables** (from `backend/.env.example`):
-
-| Variable | Example |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Strong random secret |
-| `CLIENT_ORIGIN` | `https://your-app.vercel.app` |
-| `SMTP_*` | Gmail SMTP for OTP emails |
-| `VITE_API_URL` | `/api` |
-| `VITE_SOCKET_URL` | leave empty (same origin; live GPS uses polling on Vercel) |
-
-3. Deploy — `vercel.json` runs install, Prisma generate, and Vite build automatically.
-
-**CLI:**
+2. Provision managed **PostgreSQL** and run migrations once:
 
 ```bash
-npx vercel
-npx vercel --prod
+cd backend
+npx prisma migrate deploy
 ```
 
-**Local dev** still uses `npm run dev` (Express on port 4000 + Vite proxy).
+3. Add **Environment Variables** (see `backend/.env.example`):
 
-> **Note:** Socket.io realtime is limited on Vercel serverless. REST API, auth, trips, and feedback work fully; the UI refreshes via React Query.
+| Variable | Notes |
+|----------|--------|
+| `DATABASE_URL` | Managed Postgres (sslmode=require) |
+| `JWT_SECRET` | Long random secret |
+| `CLIENT_ORIGIN` | `https://your-app.vercel.app` |
+| `APP_PUBLIC_URL` | Same public site URL (SMS feedback links) |
+| `AUTH_OTP_ENABLED` | `true` in production |
+| `SMTP_*` | Real Gmail app password |
+| `CLOUDINARY_*` | **Required on Vercel** for uploads |
+| `WAAFI_*` | Real keys; `WAAFI_DEV_MOCK=false` |
+| `SMS_*` | Infobip (or compatible) for status SMS |
+| `ALLOW_DEMO_SEED` | Keep `false` / unset in production |
+| `CRON_SECRET` | Optional protect for SMS retry cron |
+| `VITE_SUPPORT_EMAIL` / `VITE_SUPPORT_PHONE` | Public contact page |
 
-### Backend
+4. Deploy — `vercel.json` runs install, Prisma generate, Vite build, and SMS retry cron every 5 minutes.
 
-Deploy the `backend/` folder to any Node.js host (Railway, Render, Fly.io, VPS, etc.):
+**Local migrate (dev):** `npm run prisma:migrate --prefix backend`  
+**Production migrate:** `npm run db:deploy` (or `npm run prisma:deploy --prefix backend`)
 
-1. Set all `backend/.env` variables on the host
-2. Use a managed PostgreSQL instance and set `DATABASE_URL`
-3. Run `npm run prisma:push` (or migrations) before first start
-4. Start with `npm run start`
-5. Ensure `CLIENT_ORIGIN` includes your frontend URL
+> Demo seed is **disabled** on Vercel/production unless `ALLOW_DEMO_SEED=true`.
+
+> **Note:** Socket.io realtime is limited on Vercel serverless. REST API, auth, trips, and feedback work fully; the UI refreshes via React Query polling.
+
+### Backend (Node host)
+
+Deploy `backend/` to Railway, Render, Fly.io, or a VPS:
+
+1. Set all `backend/.env` variables
+2. `npm run prisma:deploy`
+3. `npm run start`
+4. Set `CLIENT_ORIGIN` to your frontend URL
 
 ### Security checklist (production)
 
 - [ ] Strong `JWT_SECRET`
 - [ ] HTTPS everywhere
 - [ ] Restrict `CLIENT_ORIGIN` to your real domain
-- [ ] Never commit `.env` or SMTP credentials
-- [ ] Use managed PostgreSQL with connection pooling appropriate to your plan
+- [ ] Cloudinary configured (no local uploads on Vercel)
+- [ ] Waafi mock off; SMS + SMTP live
+- [ ] Never commit `.env`
+- [ ] Smoke-check `GET /api/health` after deploy
 
 ---
 

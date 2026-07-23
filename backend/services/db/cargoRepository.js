@@ -1,7 +1,14 @@
 import { prisma, withTransaction } from "../../lib/prisma.js";
 import { auditFields } from "../../lib/auditContext.js";
+import { coordsFromPlaceName } from "../../lib/somaliaGeo.js";
 import { buildWaafiReferenceId } from "../waafiPayService.js";
 import { payloadDistance, estimateFare } from "./helpers.js";
+import {
+  estimateDistanceKm,
+  calculateTransportPrice,
+  parseWeightTons,
+} from "../pricingService.js";
+import { pricingRepository } from "./pricingRepository.js";
 import {
   mapCargoRequest,
   mapTrip,
@@ -13,6 +20,14 @@ import {
 } from "./mappers.js";
 
 export const cargoRepository = {
+async getCargoRequestById(id) {
+  const row = await prisma.cargoRequest.findUnique({
+    where: { id },
+    include: cargoRequestInclude,
+  });
+  return mapCargoRequest(row);
+},
+
 async listCargoRequests({ status, statuses, customerId, search, page = 1, limit = 20 } = {}) {
   const where = {};
   if (status) where.status = reqStatusToDb(status);
@@ -71,6 +86,22 @@ async createCargoRequest(payload) {
   }
   const id = `REQ-${Math.floor(9000 + Math.random() * 1000)}`;
 
+  const settings = await pricingRepository.getPricingSettings();
+  let pricingFields = {};
+  if (settings.automaticPricing) {
+    const distanceKm = estimateDistanceKm(payload.pickup, payload.destination);
+    const calc = calculateTransportPrice({
+      distanceKm,
+      weightTons: parseWeightTons(payload.weight),
+      ...settings,
+    });
+    pricingFields = {
+      distanceKm: calc.distanceKm,
+      calculatedPrice: calc.calculatedPrice,
+      finalPrice: calc.calculatedPrice,
+    };
+  }
+
   return withTransaction(async (tx) => {
     const request = await tx.cargoRequest.create({
       data: {
@@ -100,6 +131,7 @@ async createCargoRequest(payload) {
           ? new Date(payload.preferredPickupDate)
           : null,
         status: "Pending",
+        ...pricingFields,
       },
       include: cargoRequestInclude,
     });
@@ -117,8 +149,14 @@ async createCargoRequest(payload) {
           action: "cargo.created",
           entityType: "cargo_requests",
           entityId: id,
+          meta: pricingFields.calculatedPrice != null
+            ? {
+                calculatedPrice: Number(pricingFields.calculatedPrice),
+                distanceKm: Number(pricingFields.distanceKm),
+              }
+            : {},
         },
-      })
+      }),
     ]);
 
     return { request: mapCargoRequest(request), notification: mapNotification(notification) };
@@ -199,8 +237,28 @@ async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, drive
       error.status = 400;
       throw error;
     }
-    if (quotedPrice == null || !quotedEstimatedTime?.trim()) {
-      const error = new Error("quotedPrice and quotedEstimatedTime are required");
+    if (!quotedEstimatedTime?.trim()) {
+      const error = new Error("quotedEstimatedTime is required");
+      error.status = 400;
+      throw error;
+    }
+
+    const price =
+      quotedPrice != null
+        ? Number(quotedPrice)
+        : existing.finalPrice != null
+          ? Number(existing.finalPrice)
+          : existing.calculatedPrice != null
+            ? Number(existing.calculatedPrice)
+            : null;
+    if (price == null || !Number.isFinite(price) || price <= 0) {
+      const error = new Error("A calculated or adjusted final price is required before sending the quote");
+      error.status = 400;
+      throw error;
+    }
+
+    if (!driverId) {
+      const error = new Error("Select an available driver/truck before sending the quote");
       error.status = 400;
       throw error;
     }
@@ -222,7 +280,9 @@ async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, drive
       where: { id },
       data: {
         status: "Awaiting_Approval",
-        quotedPrice,
+        quotedPrice: price,
+        finalPrice: price,
+        calculatedPrice: existing.calculatedPrice ?? price,
         quotedEstimatedTime: quotedEstimatedTime.trim(),
         quoteNotes: quoteNotes?.trim() || null,
         quotedAt: new Date(),
@@ -230,6 +290,8 @@ async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, drive
         driverId,
         truckId: truck.id,
         dispatcherId: dispatcherId || existing.dispatcherId,
+        approvedByDispatcher: dispatcherId || existing.approvedByDispatcher || driverId,
+        approvedAt: existing.approvedAt || new Date(),
         customerDecisionAt: null,
         customerDecisionNote: null,
       },
@@ -239,17 +301,22 @@ async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, drive
       data: {
         userId: existing.customerId,
         type: "quote.sent",
-        message: `Quotation ready for ${id}: $${Number(quotedPrice).toFixed(2)} — ${quotedEstimatedTime.trim()}`,
+        message: `Quotation ready for ${id}: $${Number(price).toFixed(2)} — ${quotedEstimatedTime.trim()}`,
       },
     });
 
     await tx.auditLog.create({
       data: {
-        userId: driverId,
+        userId: dispatcherId || driverId,
         action: "cargo.quote.sent",
         entityType: "cargo_requests",
         entityId: id,
-        meta: { quotedPrice: Number(quotedPrice), quotedEstimatedTime },
+        meta: {
+          quotedPrice: Number(price),
+          calculatedPrice: existing.calculatedPrice != null ? Number(existing.calculatedPrice) : null,
+          adjustmentType: existing.adjustmentType,
+          quotedEstimatedTime,
+        },
       },
     });
 
@@ -277,11 +344,13 @@ async acceptCargoQuote(id, { customerId }) {
       error.status = 400;
       throw error;
     }
-    if (!existing.driverId || !existing.truckId || !existing.quotedPrice) {
+    if (!existing.driverId || !existing.truckId || !(existing.quotedPrice ?? existing.finalPrice)) {
       const error = new Error("The quotation must include a driver, truck, and price");
       error.status = 400;
       throw error;
     }
+
+    const fare = Number(existing.finalPrice ?? existing.quotedPrice);
 
     await tx.cargoRequest.update({
       where: { id },
@@ -289,6 +358,8 @@ async acceptCargoQuote(id, { customerId }) {
         status: "Approved",
         customerDecisionAt: new Date(),
         customerDecisionNote: null,
+        quotedPrice: fare,
+        finalPrice: fare,
       },
     });
 
@@ -306,8 +377,9 @@ async acceptCargoQuote(id, { customerId }) {
           dispatcherId: existing.dispatcherId,
           truckId: existing.truckId,
           status: "Pending",
-          fare: existing.quotedPrice,
+          fare,
           estimatedTime: existing.quotedEstimatedTime,
+          distance: existing.distanceKm != null ? `${existing.distanceKm} km` : payloadDistance(existing.pickup, existing.destination),
         },
       });
     } else {
@@ -321,10 +393,10 @@ async acceptCargoQuote(id, { customerId }) {
           truckId: existing.truckId,
           pickup: existing.pickup,
           destination: existing.destination,
-          distance: payloadDistance(existing.pickup, existing.destination),
+          distance: existing.distanceKm != null ? `${existing.distanceKm} km` : payloadDistance(existing.pickup, existing.destination),
           estimatedTime: existing.quotedEstimatedTime,
           status: "Pending",
-          fare: existing.quotedPrice,
+          fare,
           lastLat: pickupCoords.lat,
           lastLng: pickupCoords.lng,
           lastLocationAt: new Date(),
@@ -341,7 +413,7 @@ async acceptCargoQuote(id, { customerId }) {
         data: {
           tripId,
           customerId,
-          amount: existing.quotedPrice,
+          amount: fare,
           amountPaid: 0,
           status: "Pending",
           method: "waafipay",

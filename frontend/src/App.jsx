@@ -15,6 +15,7 @@ import { UsersPage } from "./pages/admin/UsersPage";
 import { TrucksPage } from "./pages/admin/TrucksPage";
 import { ReportsPage } from "./pages/admin/ReportsPage";
 import { SettingsPage } from "./pages/admin/SettingsPage";
+import { PricingSettingsPage } from "./pages/admin/PricingSettingsPage";
 import { AuditLogsPage } from "./pages/admin/AuditLogsPage";
 import { DispatcherDashboard } from "./pages/dispatcher/DispatcherDashboard";
 import { RequestsPage } from "./pages/shared/RequestsPage";
@@ -51,6 +52,7 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route path="/feedback/:token" element={<PublicFeedbackPage />} />
+      <Route path="/f/:token" element={<PublicFeedbackPage />} />
       <Route path="/about" element={<PublicInfoPage />} />
       <Route path="/contact" element={<PublicInfoPage />} />
       <Route path="/help" element={<PublicInfoPage />} />
@@ -63,13 +65,15 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="requests" element={<RequestsPage />} />
-          <Route path="trucks" element={<TrucksPage />} />
+          <Route path="trucks" element={<UsersPage mode="fleet" />} />
+          <Route path="fleet-status" element={<TrucksPage />} />
           <Route path="trips" element={<TripsPage />} />
           <Route path="tracking" element={<TrackingPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="earnings" element={<EarningsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="audit-logs" element={<AuditLogsPage />} />
+          <Route path="pricing" element={<PricingSettingsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="profile" element={<ProfilePage />} />

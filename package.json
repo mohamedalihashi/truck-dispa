@@ -10,7 +10,10 @@
     "build": "npm run build --prefix frontend",
     "start": "npm run start --prefix backend",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
-    "postinstall": "npm run prisma:generate --prefix backend"
+    "postinstall": "npm run prisma:generate --prefix backend",
+    "db:deploy": "npm run prisma:deploy --prefix backend",
+    "test": "npm test --prefix backend",
+    "lint": "npm run lint --prefix backend"
   },
   "prisma": {
     "schema": "backend/prisma/schema.prisma"

@@ -123,7 +123,7 @@ const assignSchema = z.object({
 });
 
 const quoteSchema = z.object({
-  quotedPrice: z.coerce.number().positive(),
+  quotedPrice: z.coerce.number().positive().optional(),
   quotedEstimatedTime: z.string().min(1),
   quoteNotes: z.string().optional(),
   driverId: z.string().uuid().optional()
@@ -248,7 +248,7 @@ router.patch(
         quotedPrice: req.body.quotedPrice,
         quotedEstimatedTime: req.body.quotedEstimatedTime,
         quoteNotes: req.body.quoteNotes,
-        driverId: req.user.role === "driver" ? req.user.sub : undefined,
+        driverId: req.user.role === "driver" ? req.user.sub : req.body.driverId,
         dispatcherId: ["dispatcher", "admin"].includes(req.user.role) ? req.user.sub : undefined
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });

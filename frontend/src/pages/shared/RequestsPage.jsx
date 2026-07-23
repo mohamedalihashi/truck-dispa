@@ -14,6 +14,7 @@ import {
   useCargoRequests,
   useCreateCargo,
   useCustomers,
+  usePricingMutations,
   useQuoteMutations,
   useTrucks,
   useUpdateCargo
@@ -21,6 +22,16 @@ import {
 import { useDashboardSearch } from "../../hooks/useDashboardSearch";
 import { useAuth } from "../../contexts/AuthContext";
 import { CANCELABLE_REQUEST_STATUSES, REQUEST_STATUSES, money } from "../../utils/helpers";
+import { PriceBreakdown } from "../../components/PriceBreakdown";
+
+const ADJUSTMENT_REASONS = [
+  "Heavy Cargo",
+  "Remote Area",
+  "Night Delivery",
+  "Poor Road",
+  "Fuel Cost",
+  "Other"
+];
 
 const normalizeTruckType = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -33,6 +44,9 @@ export function RequestsPage() {
   const [creating, setCreating] = useState(false);
   const [truckId, setTruckId] = useState("");
   const [error, setError] = useState("");
+  const [adjustmentType, setAdjustmentType] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentReason, setAdjustmentReason] = useState("");
   const { user } = useAuth();
   const { search } = useDashboardSearch();
   const showCreate = user.role === "admin" || user.role === "dispatcher";
@@ -45,6 +59,7 @@ export function RequestsPage() {
   const { data: customers } = useCustomers({ enabled: showCreate });
   const assign = useAssignCargo();
   const quote = useQuoteMutations();
+  const pricing = usePricingMutations();
   const cancel = useCancelCargo();
   const create = useCreateCargo();
   const update = useUpdateCargo();
@@ -56,6 +71,13 @@ export function RequestsPage() {
         return Number(bMatch) - Number(aMatch);
       })
     : fleet;
+  const quoteFleet = quoting
+    ? fleet.filter(
+        (truck) =>
+          truck.status === "Available" &&
+          normalizeTruckType(truck.truckType || truck.type) === normalizeTruckType(quoting.truckType)
+      )
+    : [];
 
   const {
     register: registerCreate,
@@ -84,23 +106,62 @@ export function RequestsPage() {
     register: registerQuote,
     handleSubmit: handleQuote,
     reset: resetQuote,
+    watch: watchQuote,
+    setValue: setQuoteValue,
     formState: { isSubmitting: quotingForm }
   } = useForm({
     defaultValues: {
       quotedPrice: "",
       quotedEstimatedTime: "",
-      quoteNotes: ""
+      quoteNotes: "",
+      driverId: ""
     }
   });
 
   function openQuote(row) {
     setQuoting(row);
     setError("");
+    setAdjustmentType(row.adjustmentType || "");
+    setAdjustmentAmount(row.adjustmentAmount != null ? String(row.adjustmentAmount) : "");
+    setAdjustmentReason(row.adjustmentReason || "");
+    const price = row.finalPrice ?? row.calculatedPrice ?? row.quotedPrice;
     resetQuote({
-      quotedPrice: row.quotedPrice != null ? String(row.quotedPrice) : "",
+      quotedPrice: price != null ? String(price) : "",
       quotedEstimatedTime: row.quotedEstimatedTime || "",
-      quoteNotes: row.quoteNotes || ""
+      quoteNotes: row.quoteNotes || "",
+      driverId: row.driverId || (user.role === "driver" ? user.id : "")
     });
+  }
+
+  async function onRecalculate() {
+    setError("");
+    try {
+      const result = await pricing.calculate.mutateAsync(quoting.id);
+      const next = result.quote || result.request;
+      setQuoting((prev) => ({ ...prev, ...next }));
+      setQuoteValue("quotedPrice", String(next.finalPrice ?? next.calculatedPrice));
+      setAdjustmentType("");
+      setAdjustmentAmount("");
+      setAdjustmentReason("");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function onAdjustPrice() {
+    setError("");
+    try {
+      const updated = await pricing.adjust.mutateAsync({
+        id: quoting.id,
+        adjustmentType: adjustmentType || null,
+        adjustmentAmount: adjustmentType ? Number(adjustmentAmount || 0) : null,
+        adjustmentReason: adjustmentReason || null
+      });
+      setQuoting((prev) => ({ ...prev, ...updated }));
+      setQuoteValue("quotedPrice", String(updated.finalPrice ?? updated.calculatedPrice));
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   function openAssign(row) {
@@ -131,12 +192,15 @@ export function RequestsPage() {
   async function onQuote(values) {
     setError("");
     try {
+      const driverId =
+        user.role === "driver" ? user.id || user.sub : values.driverId;
       await quote.submit.mutateAsync({
         id: quoting.id,
         payload: {
           quotedPrice: Number(values.quotedPrice),
           quotedEstimatedTime: values.quotedEstimatedTime,
-          quoteNotes: values.quoteNotes
+          quoteNotes: values.quoteNotes,
+          driverId: driverId || undefined
         }
       });
       setQuoting(null);
@@ -301,18 +365,99 @@ export function RequestsPage() {
 
       {quoting && (
         <Modal
-          title={`${quoting.status === "Quote Rejected" ? "Revise quotation" : "Send quotation"} — ${quoting.id}`}
+          title={`${quoting.status === "Quote Rejected" ? "Review & send quote" : "Review & send quote"} — ${quoting.id}`}
           onClose={() => setQuoting(null)}
         >
           <form className="space-y-3" onSubmit={handleQuote(onQuote)}>
             <p className="text-sm text-on-surface-variant">
               {quoting.pickup} → {quoting.destination} · {quoting.weight}
             </p>
+
+            <PriceBreakdown
+              distanceKm={quoting.distanceKm}
+              weight={quoting.weight}
+              calculatedPrice={quoting.calculatedPrice}
+              adjustmentType={quoting.adjustmentType}
+              adjustmentAmount={quoting.adjustmentAmount}
+              adjustmentReason={quoting.adjustmentReason}
+              finalPrice={quoting.finalPrice ?? Number(watchQuote("quotedPrice") || 0)}
+              status={quoting.status}
+            />
+
+            {(user.role === "dispatcher" || user.role === "admin") && (
+              <div className="space-y-2 rounded-xl border border-outline-variant/40 p-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" onClick={onRecalculate} disabled={pricing.calculate.isPending}>
+                    {pricing.calculate.isPending ? "Calculating…" : "Recalculate"}
+                  </Button>
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Adjust price</p>
+                <select
+                  className="stitch-input w-full"
+                  value={adjustmentType}
+                  onChange={(e) => setAdjustmentType(e.target.value)}
+                >
+                  <option value="">Accept calculated price</option>
+                  <option value="Increase">Increase</option>
+                  <option value="Discount">Discount</option>
+                  <option value="Fixed">Fixed price</option>
+                </select>
+                {adjustmentType ? (
+                  <>
+                    <input
+                      className="stitch-input w-full"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Adjustment amount"
+                      value={adjustmentAmount}
+                      onChange={(e) => setAdjustmentAmount(e.target.value)}
+                    />
+                    <select
+                      className="stitch-input w-full"
+                      value={ADJUSTMENT_REASONS.includes(adjustmentReason) ? adjustmentReason : adjustmentReason ? "Other" : ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setAdjustmentReason(value === "Other" ? "" : value);
+                      }}
+                    >
+                      <option value="">Select reason</option>
+                      {ADJUSTMENT_REASONS.map((reason) => (
+                        <option key={reason} value={reason}>{reason}</option>
+                      ))}
+                    </select>
+                    {(adjustmentReason === "" || !ADJUSTMENT_REASONS.includes(adjustmentReason) || adjustmentReason === "Other") && (
+                      <input
+                        className="stitch-input w-full"
+                        placeholder="Describe reason"
+                        value={adjustmentReason === "Other" ? "" : adjustmentReason}
+                        onChange={(e) => setAdjustmentReason(e.target.value)}
+                      />
+                    )}
+                  </>
+                ) : null}
+                <Button type="button" variant="secondary" onClick={onAdjustPrice} disabled={pricing.adjust.isPending}>
+                  {pricing.adjust.isPending ? "Saving…" : "Apply adjustment"}
+                </Button>
+              </div>
+            )}
+
+            {(user.role === "dispatcher" || user.role === "admin") && (
+              <select className="stitch-input w-full" {...registerQuote("driverId", { required: true })}>
+                <option value="">Select available driver / truck</option>
+                {quoteFleet.map((truck) => (
+                  <option key={truck.id} value={truck.driverId}>
+                    {truck.driver || "Driver"} — {truck.truckNumber} ({truck.truckType || truck.type})
+                  </option>
+                ))}
+              </select>
+            )}
+
             <input
               className="stitch-input w-full"
               type="number"
               step="0.01"
-              placeholder="Transportation price (USD)"
+              placeholder="Final transportation price"
               {...registerQuote("quotedPrice", { required: true })}
             />
             <input

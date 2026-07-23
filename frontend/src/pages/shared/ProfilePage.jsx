@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Camera, Mail, Phone, Shield, Truck, User } from "lucide-react";
+import { Camera, FileText, Mail, Phone, Shield, Truck, User } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
+import { DocumentCard, DocumentsGrid } from "../../components/ui/DocumentCard";
 import { useAuth } from "../../contexts/AuthContext";
 import { useProfileUpdate, useTrucks } from "../../hooks/useApi";
 import { api } from "../../services/api";
@@ -34,6 +35,10 @@ export function ProfilePage() {
       ? (trucks?.data || []).find((item) => item.driverId === user.id)
       : null;
   const avatarSrc = user.avatarUrl ? resolveUploadUrl(user.avatarUrl) : null;
+  const dispatcher = user.dispatcherProfile || null;
+  const truckDocs = truck?.documentUrls?.length
+    ? truck.documentUrls
+    : user.truckDocumentUrls || [];
 
   function openEdit() {
     setForm({ name: user.name || "", phone: user.phone || "", password: "" });
@@ -79,7 +84,7 @@ export function ProfilePage() {
     <div className="space-y-8">
       <PageHeader
         title="Profile"
-        subtitle="Your marketplace account and role details."
+        subtitle="Your marketplace account, role details, and uploaded documents."
         actions={
           <Button variant="secondary" onClick={openEdit}>
             Edit profile
@@ -99,7 +104,7 @@ export function ProfilePage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <section className="rounded-xl border border-outline-variant bg-primary-container p-6 text-white shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-4">
+        <section className="rounded-xl border border-outline-variant bg-sidebar p-6 text-on-sidebar shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-4">
           <div className="relative mb-6 inline-block">
             {avatarSrc ? (
               <img
@@ -108,7 +113,7 @@ export function ProfilePage() {
                 className="h-20 w-20 rounded-full border-4 border-secondary-container object-cover"
               />
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-secondary-container bg-surface-tint text-3xl font-bold">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-secondary-container bg-white/10 text-3xl font-bold text-white">
                 {user.name?.charAt(0) || "U"}
               </div>
             )}
@@ -129,38 +134,52 @@ export function ProfilePage() {
               onChange={onAvatarChange}
             />
           </div>
-          <p className="text-xs text-on-primary-container">
+          <p className="text-xs text-white/70">
             {uploadingAvatar ? "Uploading photo…" : "Tap camera icon to change your photo"}
           </p>
-          <h2 className="mt-4 text-2xl font-bold">{user.name}</h2>
-          <p className="mt-1 text-sm text-on-primary-container">{roleLabels[user.role]}</p>
-          <div className="mt-6 space-y-3 text-sm text-on-primary-container">
+          <h2 className="mt-4 text-2xl font-bold text-white">{user.name}</h2>
+          <p className="mt-1 text-sm text-white/70">{roleLabels[user.role]}</p>
+          <div className="mt-6 space-y-3 text-sm text-white/80">
             <p className="flex items-center gap-2">
-              <Mail size={16} className="text-secondary-fixed" /> {user.email}
+              <Mail size={16} className="text-secondary-container" /> {user.email}
             </p>
             {user.phone && (
               <p className="flex items-center gap-2">
-                <Phone size={16} className="text-secondary-fixed" /> {user.phone}
+                <Phone size={16} className="text-secondary-container" /> {user.phone}
               </p>
             )}
             <p className="flex items-center gap-2">
-              <Shield size={16} className="text-secondary-fixed" /> {user.status || "Active"}
+              <Shield size={16} className="text-secondary-container" /> {user.status || "Active"}
             </p>
           </div>
         </section>
 
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] lg:col-span-8">
-          <h3 className="mb-4 text-xl font-semibold text-primary-container">Account Details</h3>
+          <h3 className="mb-4 text-xl font-semibold text-on-surface">Account Details</h3>
           <dl className="grid gap-4 sm:grid-cols-2">
             <Info label="Full name" value={user.name} icon={User} />
             <Info label="Email" value={user.email} icon={Mail} />
             <Info label="Role" value={roleLabels[user.role]} icon={Shield} />
             <Info label="Phone" value={user.phone || "—"} icon={Phone} />
+            {user.role === "driver" && (
+              <>
+                <Info label="License number" value={user.driverLicense || "—"} icon={FileText} />
+                <Info label="National ID" value={user.nationalIdNumber || "—"} icon={FileText} />
+              </>
+            )}
+            {user.role === "dispatcher" && dispatcher && (
+              <>
+                <Info label="Dispatcher code" value={dispatcher.dispatcherCode || "—"} icon={FileText} />
+                <Info label="National ID" value={dispatcher.nationalIdNumber || "—"} icon={FileText} />
+                <Info label="City" value={dispatcher.city || "—"} />
+                <Info label="Years of experience" value={dispatcher.yearsOfExperience ?? "—"} />
+              </>
+            )}
           </dl>
 
           {truck && (
             <div className="mt-8 rounded-xl border border-outline-variant bg-surface-container-low p-5">
-              <div className="mb-3 flex items-center gap-2 text-lg font-semibold text-primary-container">
+              <div className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
                 <Truck size={20} className="text-secondary-container" />
                 Linked Truck
               </div>
@@ -197,6 +216,40 @@ export function ProfilePage() {
                 </Link>
               )}
             </div>
+          )}
+
+          {user.role === "driver" && (
+            <DocumentsGrid title="Driver & truck documents">
+              <DocumentCard
+                label="Driver license"
+                url={user.driverLicenseUrl}
+                meta={user.driverLicense ? `No. ${user.driverLicense}` : undefined}
+              />
+              <DocumentCard label="Driver photo" url={user.driverImageUrl} />
+              {(truck?.photoUrl1 || user.truckPhotoUrl1) && (
+                <DocumentCard label="Truck photo" url={truck?.photoUrl1 || user.truckPhotoUrl1} />
+              )}
+              {truckDocs.length
+                ? truckDocs.map((url, index) => (
+                    <DocumentCard key={`${url}-${index}`} label={`Truck document ${index + 1}`} url={url} />
+                  ))
+                : (
+                    <DocumentCard label="Truck documents" url={null} />
+                  )}
+            </DocumentsGrid>
+          )}
+
+          {user.role === "dispatcher" && (
+            <DocumentsGrid title="Dispatcher documents">
+              <DocumentCard
+                label="National ID front"
+                url={dispatcher?.nationalIdFrontUrl}
+                meta={dispatcher?.nationalIdNumber ? `ID ${dispatcher.nationalIdNumber}` : undefined}
+              />
+              <DocumentCard label="National ID back" url={dispatcher?.nationalIdBackUrl} />
+              <DocumentCard label="Profile photo" url={dispatcher?.profilePhotoUrl || user.avatarUrl} />
+              <DocumentCard label="CV" url={dispatcher?.cvUrl} />
+            </DocumentsGrid>
           )}
         </section>
       </div>
@@ -242,12 +295,12 @@ export function ProfilePage() {
 
 function Info({ label, value, icon: Icon }) {
   return (
-    <div className="rounded-lg border border-outline-variant/50 px-4 py-3">
+    <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low/40 px-4 py-3">
       <dt className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-on-surface-variant">
-        {Icon && <Icon size={14} />}
+        {Icon && <Icon size={14} className="text-secondary-container" />}
         {label}
       </dt>
-      <dd className="text-sm font-semibold text-primary-container">{value}</dd>
+      <dd className="text-sm font-semibold text-on-surface">{value}</dd>
     </div>
   );
 }

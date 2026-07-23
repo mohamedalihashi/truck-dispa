@@ -43,7 +43,7 @@ const icons = {
 };
 
 const primaryLabels = {
-  dispatcher: "Add Driver",
+  dispatcher: "Add Truck",
   customer: "Book a Truck",
   driver: "View Jobs",
   admin: "Add User"
@@ -63,6 +63,7 @@ const navPermissions = {
   tracking: "tracking",
   reports: "reports",
   "audit-logs": "auditLogs",
+  pricing: "settings",
   settings: "settings",
   notifications: "notifications"
 };
@@ -99,7 +100,7 @@ export function DashboardLayout() {
 
   function primaryAction() {
     if (user.role === "customer") navigate(`${base}/book`);
-    else if (user.role === "dispatcher") navigate(`${base}/drivers`);
+    else if (user.role === "dispatcher") navigate(`${base}/drivers`, { state: { openCreate: true } });
     else if (user.role === "driver") navigate(`${base}/jobs`);
     else navigate(`${base}/users`);
   }
@@ -107,22 +108,22 @@ export function DashboardLayout() {
   return (
     <div className="min-h-screen bg-background text-on-surface">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(100%,272px)] flex-col overflow-hidden border-r border-white/10 bg-primary-container shadow-xl transition-transform duration-300 lg:w-[248px] lg:translate-x-0 ${
+        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(100%,272px)] flex-col overflow-hidden border-r shadow-xl transition-transform duration-300 lg:w-[248px] lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {/* Brand */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3.5">
+        <div className="app-sidebar-divider flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3.5">
           <button type="button" onClick={() => navigate(base)} className="flex min-w-0 items-center gap-3 text-left">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary-container text-white">
               <Truck size={18} />
             </span>
-            <span className="block truncate text-sm font-bold text-white">{brand}</span>
+            <span className="block truncate text-sm font-bold text-on-sidebar">{brand}</span>
           </button>
           <button
             type="button"
-            className="rounded-lg p-1.5 text-white/80 transition hover:bg-secondary-container hover:text-white lg:hidden"
+            className="app-sidebar-link rounded-lg p-1.5 transition lg:hidden"
             onClick={() => setOpen(false)}
             aria-label="Close menu"
           >
@@ -132,7 +133,7 @@ export function DashboardLayout() {
 
         {/* Navigation */}
         <nav className="no-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+          <p className="app-sidebar-muted mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em]">
             Menu
           </p>
           {items.map((item) => {
@@ -145,10 +146,8 @@ export function DashboardLayout() {
                 end={item.end}
                 onClick={() => setOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition ${
-                    isActive
-                      ? "bg-secondary-container text-white shadow-sm"
-                      : "hover:bg-secondary-container hover:text-white"
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                    isActive ? "app-sidebar-link-active shadow-sm" : "app-sidebar-link"
                   }`
                 }
               >
@@ -161,7 +160,7 @@ export function DashboardLayout() {
 
         {/* Footer */}
         <div
-          className="shrink-0 space-y-2 border-t border-white/10 bg-primary-container px-3 py-3"
+          className="app-sidebar-divider shrink-0 space-y-2 border-t px-3 py-3"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
           {(
@@ -180,7 +179,7 @@ export function DashboardLayout() {
             <button
               type="button"
               onClick={() => navigate(`${base}/profile`)}
-              className="flex min-w-0 items-center gap-2 rounded-md py-1 text-left transition hover:text-white"
+              className="flex min-w-0 items-center gap-2 rounded-md py-1 text-left transition hover:opacity-80"
             >
               <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-secondary-container text-xs font-bold text-white">
                 {avatarSrc ? (
@@ -189,10 +188,10 @@ export function DashboardLayout() {
                   accountLabel?.charAt(0) || "U"
                 )}
               </div>
-              <span className="truncate text-xs font-medium text-white">{accountLabel}</span>
+              <span className="truncate text-xs font-medium text-on-sidebar">{accountLabel}</span>
             </button>
             <span
-              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/80"
+              className="app-sidebar-chip inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
               title={connected ? "Live updates on" : "Reconnecting"}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-amber-400"}`} />
@@ -204,14 +203,14 @@ export function DashboardLayout() {
             <button
               type="button"
               onClick={() => navigate(`${base}/profile`)}
-              className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-secondary-container hover:text-white"
+              className="app-sidebar-link flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition"
             >
               <User size={14} />
               Profile
             </button>
             <button
               type="button"
-              className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-white transition hover:bg-secondary-container hover:text-white"
+              className="app-sidebar-link flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition"
             >
               <HelpCircle size={14} />
               Help
@@ -221,7 +220,7 @@ export function DashboardLayout() {
           <button
             type="button"
             onClick={signOut}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-white/15 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:border-secondary-container hover:bg-secondary-container hover:text-white"
+            className="app-sidebar-outline flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-semibold transition"
           >
             <LogOut size={14} />
             Sign out
@@ -287,7 +286,7 @@ export function DashboardLayout() {
             onClick={() => navigate(`${base}/profile`)}
             className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2 transition hover:bg-secondary-fixed sm:pr-3"
           >
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-secondary-container/40 bg-primary-container text-xs font-bold text-white">
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-secondary-container/40 bg-secondary-container text-xs font-bold text-white">
               {avatarSrc ? (
                 <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
               ) : (
