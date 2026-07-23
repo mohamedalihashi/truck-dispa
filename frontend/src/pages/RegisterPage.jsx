@@ -45,7 +45,7 @@ export function RegisterPage() {
 
   function buildPayload(values) {
     const payload = new FormData();
-    ["name", "email", "phone", "password"].forEach((key) => payload.append(key, values[key]));
+    ["name", "username", "email", "phone", "password"].forEach((key) => payload.append(key, values[key]));
     payload.append("role", "customer");
     ["customerType", "city", "address", "companyName", "companyPhone", "companyAddress", "businessRegistrationNumber"].forEach((key) => {
       if (values[key]) payload.append(key, values[key]);
@@ -71,7 +71,13 @@ export function RegisterPage() {
       }
       navigate(roleHome(result.user.role));
     } catch (err) {
-      setError(err.message);
+      const details = err.details;
+      const issueMessage = details?.issues?.[0]?.message;
+      const fieldErrors = details?.fieldErrors
+        ? Object.values(details.fieldErrors).flat().filter(Boolean)
+        : [];
+      const formErrors = details?.formErrors?.filter(Boolean) || [];
+      setError(issueMessage || fieldErrors[0] || formErrors[0] || err.message);
     }
   }
 
@@ -148,11 +154,14 @@ export function RegisterPage() {
               <form className="mt-6 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit(onSubmitForm)}>
                 <Field label="Full name"><input className="stitch-input" {...register("name", { required: true })} /></Field>
                 <Field label="Phone"><input className="stitch-input" type="tel" {...register("phone", { required: true })} /></Field>
+                <Field label="Username" className="sm:col-span-2">
+                  <input className="stitch-input" autoComplete="username" {...register("username", { required: true, minLength: 3, pattern: /^[a-zA-Z0-9._-]+$/ })} />
+                </Field>
                 <Field label="Email" className="sm:col-span-2">
                   <input className="stitch-input" type="email" {...register("email", { required: true })} />
                 </Field>
                 <Field label="Password" className="sm:col-span-2">
-                  <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 8 })} />
+                  <input className="stitch-input" type="password" {...register("password", { required: true, minLength: 6 })} />
                 </Field>
                 <>
                     <Field label="Customer type">

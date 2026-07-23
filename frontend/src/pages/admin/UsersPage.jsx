@@ -56,6 +56,10 @@ export function UsersPage() {
   }
 
   function openEdit(user) {
+    if (user.isSuperAdmin && !authUser.isSuperAdmin) {
+      setError("Only the Super Admin can edit this account.");
+      return;
+    }
     setEditing(user);
     setError("");
     reset({
@@ -95,6 +99,7 @@ export function UsersPage() {
           }
           const formData = new FormData();
           formData.append("name", values.name);
+          formData.append("username", values.username);
           formData.append("email", values.email);
           formData.append("role", createRole);
           if (values.phone) formData.append("phone", values.phone);
@@ -114,7 +119,7 @@ export function UsersPage() {
             return;
           }
           const formData = new FormData();
-          ["name", "email", "phone", "dispatcherCode", "nationalIdNumber", "dateOfBirth", "gender", "city", "address", "yearsOfExperience", "assignedRegion", "workShift", "emergencyContactName", "emergencyContactPhone", "commissionPercentage", "verificationStatus", "accountStatus"].forEach((key) => {
+          ["name", "username", "email", "phone", "dispatcherCode", "nationalIdNumber", "dateOfBirth", "gender", "city", "address", "yearsOfExperience", "assignedRegion", "workShift", "emergencyContactName", "emergencyContactPhone", "commissionPercentage", "verificationStatus", "accountStatus"].forEach((key) => {
             if (values[key] !== undefined && values[key] !== "") formData.append(key, values[key]);
           });
           formData.append("role", "dispatcher");
@@ -126,6 +131,7 @@ export function UsersPage() {
         } else {
           const payload = {
             name: values.name,
+            username: values.username,
             email: values.email,
             role: values.role,
             phone: values.phone || undefined
@@ -140,15 +146,24 @@ export function UsersPage() {
       setEditing(null);
       reset();
     } catch (err) {
-      setError(err.message);
+      const details = err.details;
+      const issueMessage = details?.issues?.[0]?.message;
+      const fieldErrors = details?.fieldErrors
+        ? Object.values(details.fieldErrors).flat().filter(Boolean)
+        : [];
+      setError(issueMessage || fieldErrors[0] || err.message);
     }
   }
 
-  async function onDelete(id) {
+  async function onDelete(user) {
     if (isDispatcher) return;
+    if (user.role === "admin") {
+      alert("Admin users cannot be deleted.");
+      return;
+    }
     if (!confirm("Delete this user?")) return;
     try {
-      await mutations.remove.mutateAsync(id);
+      await mutations.remove.mutateAsync(user.id);
     } catch (err) {
       alert(err.message);
     }
@@ -226,16 +241,20 @@ export function UsersPage() {
             columns={[
               { key: "name", label: "Name" },
               { key: "email", label: "Email" },
-              ...(!isDispatcher ? [{ key: "role", label: "Role" }] : []),
+              ...(!isDispatcher ? [{
+                key: "role",
+                label: "Role",
+                render: (row) => row.isSuperAdmin ? "Super Admin" : row.role
+              }] : []),
               {
                 key: "status",
                 label: "Status",
                 render: (row) => <StatusBadge status={row.status} />
               },
               {
-                key: "truckNumber",
-                label: "Truck",
-                render: (row) => row.truckNumber || "—"
+                key: "phone",
+                label: "Phone",
+                render: (row) => row.phone || "—"
               },
               {
                 key: "actions",
@@ -247,12 +266,16 @@ export function UsersPage() {
                     </button>
                     {!isDispatcher ? (
                       <>
-                        <button type="button" className="text-secondary-container" onClick={() => openEdit(row)} title="Edit">
-                          <Pencil size={16} />
-                        </button>
-                        <button type="button" className="text-error" onClick={() => onDelete(row.id)} title="Delete">
-                          <Trash2 size={16} />
-                        </button>
+                        {(!row.isSuperAdmin || authUser.isSuperAdmin) && (
+                          <button type="button" className="text-secondary-container" onClick={() => openEdit(row)} title="Edit">
+                            <Pencil size={16} />
+                          </button>
+                        )}
+                        {row.role !== "admin" && (
+                          <button type="button" className="text-error" onClick={() => onDelete(row)} title="Delete">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </>
                     ) : row.status !== "Active" ? (
                       <Button className="px-2 py-1 text-xs" onClick={() => mutations.verifyDriver.mutate(row.id)}>Verify</Button>
@@ -270,7 +293,7 @@ export function UsersPage() {
           <dl className="grid gap-3 sm:grid-cols-2 text-sm">
             <Detail label="Email" value={viewing.email} />
             <Detail label="Phone" value={viewing.phone || "—"} />
-            <Detail label="Role" value={viewing.role} />
+            <Detail label="Role" value={viewing.isSuperAdmin ? "Super Admin" : viewing.role} />
             <Detail label="Status" value={<StatusBadge status={viewing.status} />} />
             <Detail label="Truck number" value={viewing.truckNumber || "—"} />
             <Detail label="Plate" value={viewing.plateNumber || "—"} />
@@ -291,7 +314,7 @@ export function UsersPage() {
           </dl>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
-            {!isDispatcher ? (
+            {!isDispatcher && (!viewing.isSuperAdmin || authUser.isSuperAdmin) ? (
               <Button onClick={() => { setViewing(null); openEdit(viewing); }}>Edit user</Button>
             ) : null}
           </div>
@@ -307,6 +330,7 @@ export function UsersPage() {
           <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
             <input className="stitch-input" placeholder="Name" {...register("name", { required: true })} />
             <input className="stitch-input" placeholder="Phone" {...register("phone")} />
+            {!editing ? <input className="stitch-input sm:col-span-2" placeholder="Username" {...register("username", { required: true, minLength: 3 })} /> : null}
             <input className="stitch-input sm:col-span-2" type="email" placeholder="Email" {...register("email", { required: true })} />
             {editing ? (
               <input
@@ -325,7 +349,7 @@ export function UsersPage() {
                 <option value="customer">Customer</option>
                 <option value="dispatcher">Dispatcher</option>
                 <option value="driver">Driver</option>
-                {editing?.role === "admin" ? <option value="admin">Admin</option> : null}
+                {(authUser.isSuperAdmin || editing?.role === "admin") ? <option value="admin">Admin</option> : null}
               </select>
             ) : (
               <input type="hidden" {...register("role")} value="driver" />

@@ -1,22 +1,109 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
+import {
+  formatSomaliaLocation,
+  isValidSomaliaDistrict,
+  isValidSomaliaRegion
+} from "../lib/somaliaLocations.js";
+import { normalizeSomaliPhone } from "../lib/phone.js";
+import { sendBookingCreatedSms, sendCargoRequestEventSms } from "../services/cargoSmsService.js";
 
 const router = Router();
 
-const createSchema = z.object({
-  pickup: z.string().min(1),
-  destination: z.string().min(1),
+const requiredName = z.string().trim().min(1, "Name cannot be empty");
+const somaliPhone = z.string().trim().refine(
+  (value) => /^(?:(?:\+|00)?252|0)?(?:6[1-9]|7\d|9\d)\d{7}$/.test(value.replace(/[\s-]/g, "")),
+  "Enter a valid Somali phone number"
+);
+
+const cargoRequestFields = z.object({
+  pickup: z.string().trim().min(1).optional(),
+  destination: z.string().trim().min(1).optional(),
   truckType: z.string().trim().min(1),
-  weight: z.string().min(1),
-  description: z.string().min(1),
+  weight: z.string().trim().refine(
+    (value) => Number.parseFloat(value) > 0,
+    "Cargo weight must be a positive number"
+  ),
+  description: z.string().trim().min(1),
   receiver: z.string().optional(),
   sender: z.string().optional(),
-  specialInstructions: z.string().optional(),
-  preferredPickupDate: z.string().optional(),
+  customerRole: z.enum(["SENDER", "RECEIVER"]).optional(),
+  senderName: requiredName.optional(),
+  senderPhone: somaliPhone.optional(),
+  receiverName: requiredName.optional(),
+  receiverPhone: somaliPhone.optional(),
+  fromRegion: z.string().trim().optional(),
+  fromDistrict: z.string().trim().optional(),
+  fromNeighborhood: z.string().trim().min(1, "From neighborhood is required").optional(),
+  toRegion: z.string().trim().optional(),
+  toDistrict: z.string().trim().optional(),
+  toNeighborhood: z.string().trim().min(1, "To neighborhood is required").optional(),
+  specialInstructions: z.string().trim().optional(),
+  preferredPickupDate: z.string().optional().refine((value) => {
+    if (!value) return true;
+    const selected = new Date(`${value}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return !Number.isNaN(selected.getTime()) && selected >= today;
+  }, "Preferred pickup date cannot be in the past"),
+  submissionKey: z.string().uuid().optional(),
   customerId: z.string().uuid().optional()
+});
+
+function validateStructuredBooking(data, ctx, { allowLegacy = true } = {}) {
+  const usesStructuredLocations = Boolean(
+    data.customerRole || data.fromRegion || data.fromDistrict || data.fromNeighborhood ||
+    data.toRegion || data.toDistrict || data.toNeighborhood
+  );
+
+  if (!usesStructuredLocations && allowLegacy) {
+    if (!data.pickup) ctx.addIssue({ code: "custom", path: ["pickup"], message: "Pickup is required" });
+    if (!data.destination) ctx.addIssue({ code: "custom", path: ["destination"], message: "Destination is required" });
+    return;
+  }
+
+  if (!data.customerRole) {
+    ctx.addIssue({ code: "custom", path: ["customerRole"], message: "Customer role is required" });
+  }
+  if (!isValidSomaliaRegion(data.fromRegion)) {
+    ctx.addIssue({ code: "custom", path: ["fromRegion"], message: "Select a valid Somalia region" });
+  } else if (!isValidSomaliaDistrict(data.fromRegion, data.fromDistrict)) {
+    ctx.addIssue({ code: "custom", path: ["fromDistrict"], message: "District does not belong to the selected region" });
+  }
+  if (!isValidSomaliaRegion(data.toRegion)) {
+    ctx.addIssue({ code: "custom", path: ["toRegion"], message: "Select a valid Somalia region" });
+  } else if (!isValidSomaliaDistrict(data.toRegion, data.toDistrict)) {
+    ctx.addIssue({ code: "custom", path: ["toDistrict"], message: "District does not belong to the selected region" });
+  }
+  if (!data.fromNeighborhood) {
+    ctx.addIssue({ code: "custom", path: ["fromNeighborhood"], message: "From neighborhood is required" });
+  }
+  if (!data.toNeighborhood) {
+    ctx.addIssue({ code: "custom", path: ["toNeighborhood"], message: "To neighborhood is required" });
+  }
+  if (data.customerRole === "SENDER") {
+    if (!data.receiverName) ctx.addIssue({ code: "custom", path: ["receiverName"], message: "Receiver name is required" });
+    if (!data.receiverPhone) ctx.addIssue({ code: "custom", path: ["receiverPhone"], message: "Receiver phone is required" });
+  }
+  if (data.customerRole === "RECEIVER") {
+    if (!data.senderName) ctx.addIssue({ code: "custom", path: ["senderName"], message: "Sender name is required" });
+    if (!data.senderPhone) ctx.addIssue({ code: "custom", path: ["senderPhone"], message: "Sender phone is required" });
+  }
+}
+
+export const cargoRequestSchema = cargoRequestFields.superRefine((data, ctx) => {
+  validateStructuredBooking(data, ctx);
+});
+
+const updateCargoRequestSchema = cargoRequestFields.partial().superRefine((data, ctx) => {
+  const updatesStructuredBooking = Boolean(
+    data.customerRole || data.fromRegion || data.fromDistrict || data.fromNeighborhood ||
+    data.toRegion || data.toDistrict || data.toNeighborhood
+  );
+  if (updatesStructuredBooking) validateStructuredBooking(data, ctx, { allowLegacy: false });
 });
 
 const assignSchema = z.object({
@@ -28,7 +115,8 @@ const assignSchema = z.object({
 const quoteSchema = z.object({
   quotedPrice: z.coerce.number().positive(),
   quotedEstimatedTime: z.string().min(1),
-  quoteNotes: z.string().optional()
+  quoteNotes: z.string().optional(),
+  driverId: z.string().uuid().optional()
 });
 
 const rejectQuoteSchema = z.object({
@@ -37,6 +125,7 @@ const rejectQuoteSchema = z.object({
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("requests"));
 
 router.get("/", async (req, res, next) => {
   try {
@@ -66,7 +155,7 @@ router.get("/summary", async (req, res, next) => {
   }
 });
 
-router.post("/", requireRole("customer", "admin", "dispatcher"), validate(createSchema), async (req, res, next) => {
+router.post("/", requireRole("customer", "admin", "dispatcher"), validate(cargoRequestSchema), async (req, res, next) => {
   try {
     let customerId = req.user.sub;
     if (req.user.role === "dispatcher" || req.user.role === "admin") {
@@ -79,24 +168,58 @@ router.post("/", requireRole("customer", "admin", "dispatcher"), validate(create
     if (!customer || customer.role !== "customer") {
       return res.status(400).json({ message: "Valid customer is required" });
     }
+    if (req.user.role === "customer" && !req.body.customerRole) {
+      return res.status(400).json({ message: "Customer role is required" });
+    }
+    if (req.body.customerRole && (!customer.name?.trim() || !somaliPhone.safeParse(customer.phone).success)) {
+      return res.status(400).json({ message: "Your profile name and Somali phone number are required before booking" });
+    }
+    const bookingDetails = req.body.customerRole
+      ? {
+          ...req.body,
+          pickup: formatSomaliaLocation(req.body.fromNeighborhood, req.body.fromDistrict, req.body.fromRegion),
+          destination: formatSomaliaLocation(req.body.toNeighborhood, req.body.toDistrict, req.body.toRegion),
+          senderName: req.body.customerRole === "SENDER" ? customer.name.trim() : req.body.senderName.trim(),
+          senderPhone: normalizeSomaliPhone(req.body.customerRole === "SENDER" ? customer.phone : req.body.senderPhone),
+          receiverName: req.body.customerRole === "RECEIVER" ? customer.name.trim() : req.body.receiverName.trim(),
+          receiverPhone: normalizeSomaliPhone(req.body.customerRole === "RECEIVER" ? customer.phone : req.body.receiverPhone)
+        }
+      : req.body;
     const { request, notification } = await db.createCargoRequest({
-      ...req.body,
+      ...bookingDetails,
       customerId,
       customerName: customer.name
     });
     req.app.get("io").emit("order.created", request);
     if (notification) req.app.get("io").emit("notification.created", notification);
+    void sendBookingCreatedSms(request).catch((error) => console.error("Booking SMS failed:", error.message));
     res.status(201).json(request);
   } catch (error) {
     next(error);
   }
 });
 
-router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(createSchema.partial()), async (req, res, next) => {
+router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(updateCargoRequestSchema), async (req, res, next) => {
   try {
     const filters = {};
     if (req.user.role === "customer") filters.customerId = req.user.sub;
-    const request = await db.updateCargoRequest(req.params.id, req.body, filters);
+    let payload = req.body;
+    if (req.user.role === "customer" && req.body.customerRole) {
+      const customer = await db.findUserById(req.user.sub);
+      if (!customer?.name?.trim() || !somaliPhone.safeParse(customer?.phone).success) {
+        return res.status(400).json({ message: "Your profile name and Somali phone number are required before booking" });
+      }
+      payload = {
+        ...req.body,
+        pickup: formatSomaliaLocation(req.body.fromNeighborhood, req.body.fromDistrict, req.body.fromRegion),
+        destination: formatSomaliaLocation(req.body.toNeighborhood, req.body.toDistrict, req.body.toRegion),
+        senderName: req.body.customerRole === "SENDER" ? customer.name.trim() : req.body.senderName?.trim(),
+        senderPhone: normalizeSomaliPhone(req.body.customerRole === "SENDER" ? customer.phone : req.body.senderPhone),
+        receiverName: req.body.customerRole === "RECEIVER" ? customer.name.trim() : req.body.receiverName?.trim(),
+        receiverPhone: normalizeSomaliPhone(req.body.customerRole === "RECEIVER" ? customer.phone : req.body.receiverPhone)
+      };
+    }
+    const request = await db.updateCargoRequest(req.params.id, payload, filters);
     if (!request) return res.status(404).json({ message: "Cargo request not found" });
     req.app.get("io").emit("order.updated", request);
     res.json(request);
@@ -107,7 +230,7 @@ router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(cr
 
 router.patch(
   "/:id/quote",
-  requireRole("driver"),
+  requireRole("driver", "dispatcher", "admin"),
   validate(quoteSchema),
   async (req, res, next) => {
     try {
@@ -115,7 +238,8 @@ router.patch(
         quotedPrice: req.body.quotedPrice,
         quotedEstimatedTime: req.body.quotedEstimatedTime,
         quoteNotes: req.body.quoteNotes,
-        driverId: req.user.sub
+        driverId: req.user.role === "driver" ? req.user.sub : req.body.driverId,
+        dispatcherId: ["dispatcher", "admin"].includes(req.user.role) ? req.user.sub : undefined
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("quote.sent", result.request);
@@ -135,6 +259,7 @@ router.post(
       const request = await db.acceptCargoQuote(req.params.id, { customerId: req.user.sub });
       if (!request) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("quote.accepted", request);
+      void sendCargoRequestEventSms(request, "booking.accepted").catch((error) => console.error("Accepted SMS failed:", error.message));
       res.json(request);
     } catch (error) {
       next(error);
@@ -175,6 +300,7 @@ router.patch(
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("driver.assigned", result.request);
       if (result.notification) req.app.get("io").emit("notification.created", result.notification);
+      void sendCargoRequestEventSms(result.request, "booking.assigned").catch((error) => console.error("Assigned SMS failed:", error.message));
       res.json(result.request);
     } catch (error) {
       next(error);
@@ -189,6 +315,7 @@ router.delete("/:id", requireRole("customer", "dispatcher", "admin"), async (req
     const request = await db.cancelCargoRequest(req.params.id, req.user.sub, options);
     if (!request) return res.status(404).json({ message: "Cargo request not found" });
     req.app.get("io").emit("order.cancelled", request);
+    void sendCargoRequestEventSms(request, "booking.cancelled").catch((error) => console.error("Cancelled SMS failed:", error.message));
     res.json(request);
   } catch (error) {
     next(error);

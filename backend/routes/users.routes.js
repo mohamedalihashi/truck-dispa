@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
 import { generateTempPassword } from "../lib/password.js";
 import { sendWelcomeEmail } from "../services/emailService.js";
@@ -12,10 +12,12 @@ const imageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const createSchema = z.object({
   name: z.string().min(2),
+  username: z.string().trim().min(3).max(30).regex(/^[a-zA-Z0-9._-]+$/),
   email: z.string().email(),
   password: strongPasswordSchema.optional(),
   role: z.enum(["admin", "dispatcher", "customer", "driver"]),
   phone: z.string().optional(),
+  nationalIdNumber: z.string().trim().min(1).optional(),
   driverLicense: z.string().trim().min(1).optional(),
   driverLicenseUrl: z.string().min(1).optional(),
   driverImageUrl: z.string().min(1).optional(),
@@ -54,6 +56,7 @@ const createSchema = z.object({
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("users"));
 
 router.get("/", requireRole("admin", "dispatcher"), async (req, res, next) => {
   try {
@@ -101,6 +104,12 @@ router.post(
   async (req, res, next) => {
     try {
       const requestedRole = req.body.role;
+      if (requestedRole === "admin") {
+        const actor = await db.findUserById(req.user.sub);
+        if (!actor?.isSuperAdmin) {
+          return res.status(403).json({ message: "Only the Super Admin can create another admin" });
+        }
+      }
       if (req.user.role === "dispatcher") {
         if (requestedRole && requestedRole !== "driver") {
           return res.status(403).json({ message: "Dispatchers can only register drivers with their truck" });
@@ -119,21 +128,25 @@ router.post(
               plateNumber: req.body.plateNumber,
               capacity: req.body.capacity,
               truckType: req.body.truckType,
-              photoUrl1: fileToPublicUrl(req.files?.truckPhoto1?.[0]),
-              photoUrl2: fileToPublicUrl(req.files?.truckPhoto2?.[0]),
-              documentUrls: (req.files?.truckDocuments || []).map(fileToPublicUrl)
+              photoUrl1: fileToPublicUrl(req.files?.truckPhoto1?.[0]) || undefined,
+              photoUrl2: fileToPublicUrl(req.files?.truckPhoto2?.[0]) || undefined,
+              documentUrls: (req.files?.truckDocuments || [])
+                .map(fileToPublicUrl)
+                .filter(Boolean)
             }
           : undefined;
 
       const parsed = createSchema.safeParse({
         name: req.body.name,
+        username: req.body.username,
         email: req.body.email,
         password: req.body.password || undefined,
         role,
         phone: req.body.phone || undefined,
+        nationalIdNumber: role === "driver" ? req.body.nationalIdNumber || undefined : undefined,
         driverLicense: role === "driver" ? req.body.driverLicense : undefined,
-        driverLicenseUrl: role === "driver" ? fileToPublicUrl(req.files?.driverLicenseDocument?.[0]) : undefined,
-        driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) : undefined,
+        driverLicenseUrl: role === "driver" ? fileToPublicUrl(req.files?.driverLicenseDocument?.[0]) || undefined : undefined,
+        driverImageUrl: role === "driver" ? fileToPublicUrl(req.files?.driverImage?.[0]) || undefined : undefined,
         dispatcherProfile: role === "dispatcher" ? {
           ...req.body,
           nationalIdFrontUrl: fileToPublicUrl(req.files?.nationalIdFront?.[0]),
@@ -145,7 +158,16 @@ router.post(
       });
 
       if (!parsed.success) {
-        return res.status(400).json({ message: "Validation failed", details: parsed.error.flatten() });
+        return res.status(400).json({
+          message: "Validation failed",
+          details: {
+            ...parsed.error.flatten(),
+            issues: parsed.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              message: issue.message
+            }))
+          }
+        });
       }
 
       if (parsed.data.role === "driver" && !parsed.data.truck) {
@@ -164,17 +186,26 @@ router.post(
       if (existing) return res.status(409).json({ message: "Email already registered" });
 
       const tempPassword = parsed.data.password || generateTempPassword();
+      const truck = parsed.data.truck
+        ? {
+            ...parsed.data.truck,
+            registrationDocumentUrl: parsed.data.truck.documentUrls[0],
+            documentUrls: parsed.data.truck.documentUrls
+          }
+        : undefined;
       const user = await db.createUser({
         name: parsed.data.name,
+        username: parsed.data.username,
         email: parsed.data.email,
         password: tempPassword,
         role: parsed.data.role,
         phone: parsed.data.phone,
+        nationalIdNumber: parsed.data.nationalIdNumber,
         driverLicense: parsed.data.driverLicense,
         driverLicenseUrl: parsed.data.driverLicenseUrl,
         driverImageUrl: parsed.data.driverImageUrl,
         dispatcherProfile: parsed.data.dispatcherProfile,
-        truck: parsed.data.truck,
+        truck,
         mustChangePassword: true,
         actorId: req.user.sub
       });
@@ -204,7 +235,18 @@ router.post("/:id/verify-driver", requireRole("admin", "dispatcher"), async (req
 
 router.patch("/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    const user = await db.updateUser(req.params.id, req.body);
+    const [actor, target] = await Promise.all([
+      db.findUserById(req.user.sub),
+      db.findUserById(req.params.id)
+    ]);
+    if (!target) return res.status(404).json({ message: "User not found" });
+    if (target.isSuperAdmin && !actor?.isSuperAdmin) {
+      return res.status(403).json({ message: "Only the Super Admin can update the Super Admin account" });
+    }
+    if (req.body.role === "admin" && target.role !== "admin" && !actor?.isSuperAdmin) {
+      return res.status(403).json({ message: "Only the Super Admin can promote users to admin" });
+    }
+    const user = await db.updateUser(req.params.id, req.body, { actorId: req.user.sub, action: "user.updated" });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (error) {

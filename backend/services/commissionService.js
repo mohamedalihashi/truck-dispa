@@ -136,6 +136,9 @@ export async function syncEarningsForPayment(paymentId) {
     include: { trip: true },
   });
   if (!payment) return [];
+  if (payment.status !== "Paid" || Number(payment.amountPaid || 0) < Number(payment.amount || 0) - 0.01) {
+    return [];
+  }
 
   const amountPaid = Number(payment.amountPaid || 0);
   const alreadyDistributed = await getDistributedAmountForPayment(paymentId);

@@ -1,13 +1,14 @@
 import { Router } from "express";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission, requireSuperAdmin } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
+import { listSmsNotifications, resendSms } from "../services/smsService.js";
 
 const router = Router();
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
 
-router.get("/payments", requireRole("admin", "customer"), async (req, res, next) => {
+router.get("/payments", requireRole("admin", "customer"), requirePermission("payments"), async (req, res, next) => {
   try {
     const customerId = req.user.role === "customer" ? req.user.sub : undefined;
     res.json(
@@ -22,7 +23,7 @@ router.get("/payments", requireRole("admin", "customer"), async (req, res, next)
   }
 });
 
-router.get("/settings", requireRole("admin"), async (_req, res, next) => {
+router.get("/settings", requireRole("admin"), requirePermission("settings"), async (_req, res, next) => {
   try {
     res.json(await db.getSettings());
   } catch (error) {
@@ -30,7 +31,24 @@ router.get("/settings", requireRole("admin"), async (_req, res, next) => {
   }
 });
 
-router.put("/settings/:key", requireRole("admin"), async (req, res, next) => {
+router.put("/settings/rolePermissions", requireRole("admin"), requireSuperAdmin, async (req, res, next) => {
+  try {
+    const result = await db.updateRolePermissions(req.body);
+    await db.recordAudit({
+      userId: req.user.sub,
+      action: "settings.permissions.updated",
+      entityType: "settings",
+      entityId: "rolePermissions",
+      description: "Role permissions updated",
+      newValues: result.value,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/settings/:key", requireRole("admin"), requirePermission("settings"), async (req, res, next) => {
   try {
     res.json(await db.updateSettings(req.params.key, req.body));
   } catch (error) {
@@ -38,7 +56,7 @@ router.put("/settings/:key", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.post("/payments", requireRole("admin"), async (req, res, next) => {
+router.post("/payments", requireRole("admin"), requirePermission("payments"), async (req, res, next) => {
   try {
     const { tripId, customerId, amount, status, method, description } = req.body;
     if (!customerId || amount == null) {
@@ -53,7 +71,7 @@ router.post("/payments", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.delete("/payments/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/payments/:id", requireRole("admin"), requirePermission("payments"), async (req, res, next) => {
   try {
     const ok = await db.deletePayment(req.params.id);
     if (!ok) return res.status(404).json({ message: "Payment not found" });
@@ -63,7 +81,7 @@ router.delete("/payments/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.patch("/payments/:id", requireRole("admin"), async (req, res, next) => {
+router.patch("/payments/:id", requireRole("admin"), requirePermission("payments"), async (req, res, next) => {
   try {
     const { status, amount, description, amountPaid, method } = req.body;
     if (!status && amount == null && description == null && amountPaid == null && !method) {
@@ -85,9 +103,65 @@ router.patch("/payments/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.get("/audit-logs", requireRole("admin"), async (req, res, next) => {
+router.get("/audit-logs", requireRole("admin"), requirePermission("auditLogs"), async (req, res, next) => {
   try {
     res.json(await db.listAuditLogs({ page: req.query.page, limit: req.query.limit }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/user-activity-report", requireRole("admin"), requirePermission("reports"), async (req, res, next) => {
+  try {
+    if (!req.query.userId) {
+      return res.status(400).json({ message: "Select a user to generate the activity report" });
+    }
+    const report = await db.userActivityReport({
+      userId: req.query.userId,
+      activityType: req.query.activityType || undefined,
+      from: req.query.from || undefined,
+      to: req.query.to || undefined,
+      groupBy: req.query.groupBy || "day",
+      limit: req.query.limit || 1000,
+    });
+    if (!report) return res.status(404).json({ message: "User not found" });
+    await db.recordAudit({
+      userId: req.user.sub,
+      action: "report.user_activity.generated",
+      entityType: "users",
+      entityId: req.query.userId,
+      description: `Generated user activity report for ${report.profile.name}`,
+      newValues: { activityType: req.query.activityType || null, from: req.query.from || null, to: req.query.to || null },
+    });
+    res.json(report);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/delivery-feedback", requireRole("admin"), requirePermission("reports"), async (req, res, next) => {
+  try {
+    res.json(await db.listTripFeedback({
+      complaintsOnly: req.query.complaintsOnly === "true",
+      page: req.query.page,
+      limit: req.query.limit || 100,
+    }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/sms-notifications", requireRole("admin"), requirePermission("notifications"), async (req, res, next) => {
+  try {
+    res.json(await listSmsNotifications({ status: req.query.status, page: req.query.page, limit: req.query.limit }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/sms-notifications/:id/resend", requireRole("admin"), requirePermission("notifications"), async (req, res, next) => {
+  try {
+    res.json(await resendSms(req.params.id));
   } catch (error) {
     next(error);
   }

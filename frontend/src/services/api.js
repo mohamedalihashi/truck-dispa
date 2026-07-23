@@ -59,9 +59,11 @@ export const api = {
   verifyRegister: (payload) => apiClient.post("/auth/register/verify", payload),
   login: (payload) => apiClient.post("/auth/login", payload),
   verifyLogin: (payload) => apiClient.post("/auth/login/verify", payload),
+  logout: () => apiClient.post("/auth/logout"),
   resendCode: (payload) => apiClient.post("/auth/resend-code", payload),
   changePassword: (payload) => apiClient.post("/auth/change-password", payload),
   me: () => apiClient.get("/auth/me"),
+  myPermissions: () => apiClient.get("/auth/permissions"),
   updateProfile: (payload) => apiClient.patch("/auth/me", payload),
   uploadAvatar: (formData) =>
     apiClient.post("/auth/me/avatar", formData, {
@@ -103,6 +105,7 @@ export const api = {
     apiClient.post(`/trips/${id}/proof`, formData, {
       headers: { "Content-Type": "multipart/form-data" }
     }),
+  confirmTripDelivery: (id) => apiClient.post(`/trips/${id}/confirm-delivery`),
   submitTripFeedback: (id, payload) => apiClient.post(`/trips/${id}/feedback`, payload),
   listTrucks: (params = {}) => apiClient.get("/trucks", { params }),
   truckSummary: () => apiClient.get("/trucks/summary"),
@@ -113,6 +116,7 @@ export const api = {
   listNotifications: () => apiClient.get("/notifications"),
   markNotificationRead: (id) => apiClient.patch(`/notifications/${id}/read`),
   dashboardReport: () => apiClient.get("/reports/dashboard"),
+  dashboardAnalytics: () => apiClient.get("/reports/dashboard-analytics"),
   revenueReport: (period = "monthly") => apiClient.get("/reports/revenue", { params: { period } }),
   performanceReport: () => apiClient.get("/reports/performance"),
   shipmentsReport: () => apiClient.get("/reports/shipments"),
@@ -131,7 +135,14 @@ export const api = {
   payoutUserEarnings: (userId, payload) => apiClient.post(`/earnings/user/${userId}/payout-all`, payload),
   getSettings: () => apiClient.get("/admin/settings"),
   updateSettings: (key, value) => apiClient.put(`/admin/settings/${key}`, value),
-  listAuditLogs: () => apiClient.get("/admin/audit-logs")
+  updateRolePermissions: (value) => apiClient.put("/admin/settings/rolePermissions", value),
+  listAuditLogs: () => apiClient.get("/admin/audit-logs"),
+  userActivityReport: (params) => apiClient.get("/admin/user-activity-report", { params }),
+  deliveryFeedbackReport: (params) => apiClient.get("/admin/delivery-feedback", { params }),
+  listSmsNotifications: (params) => apiClient.get("/admin/sms-notifications", { params }),
+  resendSmsNotification: (id) => apiClient.post(`/admin/sms-notifications/${id}/resend`),
+  getPublicFeedback: (token) => apiClient.get(`/public/feedback/${encodeURIComponent(token)}`),
+  submitPublicFeedback: (token, payload) => apiClient.post(`/public/feedback/${encodeURIComponent(token)}`, payload)
 };
 
 export function saveSession({ token, user }) {

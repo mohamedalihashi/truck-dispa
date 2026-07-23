@@ -6,15 +6,32 @@ const password = "StrongPass1!";
 describe("public registration validation", () => {
   it("accepts an individual customer", () => {
     const result = registerSchema.safeParse({
-      name: "Customer One", email: "customer@example.com", phone: "+252610000001",
+      name: "Customer One", username: "customer.one", email: "customer@example.com", phone: "+252610000001",
       password, role: "customer", customerProfile: { customerType: "Individual", city: "Mogadishu" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a local /uploads profile photo path", () => {
+    const result = registerSchema.safeParse({
+      name: "Customer Two",
+      username: "customer.two",
+      email: "customer2@example.com",
+      phone: "+252610000011",
+      password,
+      role: "customer",
+      customerProfile: {
+        customerType: "Individual",
+        city: "Mogadishu",
+        profilePhotoUrl: "/uploads/customers/photo.png"
+      }
     });
     expect(result.success).toBe(true);
   });
 
   it("requires business company fields", () => {
     const result = registerSchema.safeParse({
-      name: "Business Owner", email: "business@example.com", phone: "+252610000002",
+      name: "Business Owner", username: "business.owner", email: "business@example.com", phone: "+252610000002",
       password, role: "customer", customerProfile: { customerType: "Business", city: "Hargeisa" },
     });
     expect(result.success).toBe(false);

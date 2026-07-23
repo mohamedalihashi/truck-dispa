@@ -112,8 +112,8 @@
 
     --color-secondary: #ffb693;
     --color-secondary-container: #fe6b00;
-    --color-on-secondary: #351000;
-    --color-on-secondary-container: #ffdbcc;
+    --color-on-secondary: #ffffff;
+    --color-on-secondary-container: #ffffff;
     --color-secondary-fixed: #3d1f0a;
     --color-secondary-fixed-dim: #572000;
     --color-on-secondary-fixed: #ffdbcc;
@@ -154,6 +154,38 @@
     background: var(--color-background);
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  body,
+  header,
+  main,
+  aside,
+  section,
+  article,
+  nav,
+  table,
+  input,
+  select,
+  textarea {
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body,
+    header,
+    main,
+    aside,
+    section,
+    article,
+    nav,
+    table,
+    input,
+    select,
+    textarea {
+      transition: none;
+    }
   }
 
   button,

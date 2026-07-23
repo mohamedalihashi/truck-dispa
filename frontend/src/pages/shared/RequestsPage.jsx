@@ -36,7 +36,7 @@ export function RequestsPage() {
   const { user } = useAuth();
   const { search } = useDashboardSearch();
   const showCreate = user.role === "admin" || user.role === "dispatcher";
-  const canQuote = user.role === "driver";
+  const canQuote = ["driver", "dispatcher", "admin"].includes(user.role);
   const canAssign = user.role === "admin";
   const canEdit = user.role === "admin" || user.role === "dispatcher";
   const { data, isLoading } = useCargoRequests({ status: status || undefined, search: search || undefined });
@@ -89,7 +89,8 @@ export function RequestsPage() {
     defaultValues: {
       quotedPrice: "",
       quotedEstimatedTime: "",
-      quoteNotes: ""
+      quoteNotes: "",
+      driverId: ""
     }
   });
 
@@ -99,7 +100,8 @@ export function RequestsPage() {
     resetQuote({
       quotedPrice: row.quotedPrice != null ? String(row.quotedPrice) : "",
       quotedEstimatedTime: row.quotedEstimatedTime || "",
-      quoteNotes: row.quoteNotes || ""
+      quoteNotes: row.quoteNotes || "",
+      driverId: row.driverId || ""
     });
   }
 
@@ -136,7 +138,8 @@ export function RequestsPage() {
         payload: {
           quotedPrice: Number(values.quotedPrice),
           quotedEstimatedTime: values.quotedEstimatedTime,
-          quoteNotes: values.quoteNotes
+          quoteNotes: values.quoteNotes,
+          driverId: user.role === "driver" ? undefined : values.driverId
         }
       });
       setQuoting(null);
@@ -197,7 +200,7 @@ export function RequestsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Cargo Requests"
-        subtitle="Review requests, send quotations, wait for customer approval, then assign drivers."
+        subtitle="Send quotations, collect the 30% deposit, transport cargo, confirm delivery, then collect the 70% balance."
         actions={
           showCreate ? (
             <Button onClick={() => { setCreating(true); setError(""); }}>
@@ -320,6 +323,18 @@ export function RequestsPage() {
               placeholder="Estimated delivery time (e.g. 2 days, 48 hours)"
               {...registerQuote("quotedEstimatedTime", { required: true })}
             />
+            {user.role !== "driver" && (
+              <select className="stitch-input w-full" {...registerQuote("driverId", { required: true })}>
+                <option value="">Select available driver / truck</option>
+                {fleet
+                  .filter((truck) => truck.status === "Available" && normalizeTruckType(truck.truckType || truck.type) === normalizeTruckType(quoting.truckType))
+                  .map((truck) => (
+                    <option key={truck.id} value={truck.driverId}>
+                      {truck.driver} · {truck.truckNumber} · {truck.plateNumber}
+                    </option>
+                  ))}
+              </select>
+            )}
             <textarea
               className="stitch-input min-h-20 w-full"
               placeholder="Quote notes (optional)"
@@ -377,8 +392,8 @@ export function RequestsPage() {
           <dl className="grid gap-3 sm:grid-cols-2 text-sm">
             <Detail label="Customer" value={viewing.customer} />
             <Detail label="Status" value={<StatusBadge status={viewing.status} />} />
-            <Detail label="Pickup" value={viewing.pickup} />
-            <Detail label="Destination" value={viewing.destination} />
+            <Detail label="From" value={viewing.pickup} />
+            <Detail label="To" value={viewing.destination} />
             <Detail
               label="Preferred pickup"
               value={
@@ -394,8 +409,11 @@ export function RequestsPage() {
             <Detail label="Driver" value={viewing.driver || "—"} />
             <Detail label="Truck" value={viewing.truck || "—"} />
             <Detail label="Description" value={viewing.description} className="sm:col-span-2" />
-            <Detail label="Sender" value={viewing.sender || "—"} />
-            <Detail label="Receiver" value={viewing.receiver || "—"} />
+            <Detail label="Booking customer role" value={viewing.customerRole ? `Customer is the ${viewing.customerRole.toLowerCase()}` : "—"} />
+            <Detail label="Sender" value={viewing.senderName || viewing.sender || "—"} />
+            <Detail label="Sender phone" value={viewing.senderPhone || "—"} />
+            <Detail label="Receiver" value={viewing.receiverName || viewing.receiver || "—"} />
+            <Detail label="Receiver phone" value={viewing.receiverPhone || "—"} />
             <Detail label="Instructions" value={viewing.specialInstructions || "—"} className="sm:col-span-2" />
           </dl>
         </Modal>

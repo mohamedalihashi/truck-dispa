@@ -77,11 +77,12 @@ export function ShipmentsPage() {
   async function confirmDelivery(row) {
     if (!confirm("Confirm that this shipment was delivered?")) return;
     try {
-      const updated = await api.updateTripStatus(row.id, "Delivered");
+      const updated = await api.confirmTripDelivery(row.id);
       qc.invalidateQueries({ queryKey: ["trips"] });
       qc.invalidateQueries({ queryKey: ["cargo-requests"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      setViewingTrip({ ...row, ...updated, status: "Delivered", feedback: updated.feedback || null });
+      setViewingTrip({ ...row, ...updated, feedback: updated.feedback || null });
     } catch (err) {
       alert(err.message);
     }
@@ -246,10 +247,12 @@ export function ShipmentsPage() {
                         <Link to="/customer/tracking" className="text-xs font-semibold text-secondary-container hover:underline">
                           Track
                         </Link>
-                        <Button className="px-2 py-1 text-xs" onClick={() => confirmDelivery(row)}>
-                          Confirm delivery
-                        </Button>
                       </>
+                    )}
+                    {row.status === "Delivered" && row.deliveryProofUrl && !row.deliveryConfirmedAt && (
+                      <Button className="px-2 py-1 text-xs" onClick={() => confirmDelivery(row)}>
+                        Confirm delivery
+                      </Button>
                     )}
                     {row.status === "Delivered" && !row.feedback && (
                       <button
@@ -304,8 +307,11 @@ export function ShipmentsPage() {
             <Detail label="Driver" value={viewingRequest.driver || "—"} />
             <Detail label="Truck" value={viewingRequest.truck || "—"} />
             <Detail label="Description" value={viewingRequest.description} className="sm:col-span-2" />
-            <Detail label="Sender" value={viewingRequest.sender || "—"} />
-            <Detail label="Receiver" value={viewingRequest.receiver || "—"} />
+            <Detail label="Booking customer role" value={viewingRequest.customerRole ? `You are the ${viewingRequest.customerRole.toLowerCase()}` : "—"} />
+            <Detail label="Sender" value={viewingRequest.senderName || viewingRequest.sender || "—"} />
+            <Detail label="Sender phone" value={viewingRequest.senderPhone || "—"} />
+            <Detail label="Receiver" value={viewingRequest.receiverName || viewingRequest.receiver || "—"} />
+            <Detail label="Receiver phone" value={viewingRequest.receiverPhone || "—"} />
             <Detail label="Instructions" value={viewingRequest.specialInstructions || "—"} className="sm:col-span-2" />
           </dl>
           <div className="mt-4 flex justify-end gap-2">
@@ -327,6 +333,11 @@ export function ShipmentsPage() {
             <Detail label="Distance" value={viewingTrip.distance || "—"} />
             <Detail label="ETA" value={viewingTrip.estimatedTime || "—"} />
             <Detail label="Fare" value={viewingTrip.fare != null ? `$${Number(viewingTrip.fare).toLocaleString()}` : "—"} />
+            <Detail label="Booking customer role" value={viewingTrip.customerRole ? `You are the ${viewingTrip.customerRole.toLowerCase()}` : "—"} />
+            <Detail label="Sender" value={viewingTrip.senderName || "—"} />
+            <Detail label="Sender phone" value={viewingTrip.senderPhone || "—"} />
+            <Detail label="Receiver" value={viewingTrip.receiverName || "—"} />
+            <Detail label="Receiver phone" value={viewingTrip.receiverPhone || "—"} />
             <Detail
               label="Last location"
               value={
@@ -376,12 +387,7 @@ export function ShipmentsPage() {
           <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit(onUpdate)}>
             <input className="stitch-input" placeholder="Pickup" {...register("pickup", { required: true })} />
             <input className="stitch-input" placeholder="Destination" {...register("destination", { required: true })} />
-            <select className="stitch-input" {...register("truckType")}>
-              <option>Box Truck</option>
-              <option>Flatbed</option>
-              <option>Refrigerated</option>
-              <option>Tanker</option>
-            </select>
+            <input className="stitch-input" placeholder="Write required truck type" {...register("truckType", { required: true })} />
             <input className="stitch-input" placeholder="Weight" {...register("weight", { required: true })} />
             <input className="stitch-input" placeholder="Sender" {...register("sender")} />
             <input className="stitch-input" placeholder="Receiver" {...register("receiver")} />

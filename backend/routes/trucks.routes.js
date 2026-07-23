@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { db } from "../services/dbService.js";
 
@@ -18,6 +18,7 @@ const truckSchema = z.object({
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("trucks"));
 
 router.get("/", async (req, res, next) => {
   try {

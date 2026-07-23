@@ -1,12 +1,13 @@
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { Truck, Eye, EyeOff } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
 import { OtpCodeBanner } from "../components/ui/OtpCodeBanner";
 import { PublicSiteHeader } from "../components/PublicSiteHeader";
 import { roleHome, DEMO_ACCOUNTS, DEMO_PASSWORD } from "../utils/helpers";
+import { useOtpAutoSubmit, useResendCooldown } from "../hooks/useOtpVerification";
 import {
   clearLoginVerification,
   loadLoginVerification,
@@ -25,28 +26,34 @@ export function LoginPage() {
   const [devCode, setDevCode] = useState("");
   const [info, setInfo] = useState(location.state?.step === "verify" ? "Check your email for the verification code." : "");
   const [resending, setResending] = useState(false);
+  const { secondsLeft, startCooldown, canResend } = useResendCooldown(60);
   const {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { isSubmitting }
   } = useForm({
     defaultValues: {
-      email: location.state?.email || "",
+      identifier: location.state?.email || "",
       password: location.state?.password || "",
       code: ""
     }
   });
 
+  const codeValue = watch("code");
+
   useEffect(() => {
-    if (location.state?.email) setValue("email", location.state.email);
+    if (step === "verify") startCooldown(60);
+  }, [step, startCooldown]);
+
+  useEffect(() => {
+    if (location.state?.email) setValue("identifier", location.state.email);
     if (location.state?.password) setValue("password", location.state.password);
     const stored = loadLoginVerification();
     if (stored?.email) setPendingEmail(stored.email);
     if (stored?.password) setPendingPassword(stored.password);
   }, [location.state, setValue]);
-
-  if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
 
   async function onSubmitCredentials(values) {
     setError("");
@@ -54,19 +61,20 @@ export function LoginPage() {
     try {
       const result = await login(values);
       if (result.verificationRequired) {
-        setPendingEmail(values.email);
+        setPendingEmail(result.email || values.identifier);
         setPendingPassword(values.password);
-        saveLoginVerification(values.email, values.password);
+        saveLoginVerification(result.email || values.identifier, values.password);
         setDevCode(result.devCode || "");
         setStep("verify");
-        setInfo(result.message);
+        startCooldown(60);
+        setInfo(result.message || "Verification code sent to your account email. Check your inbox.");
         setValue("code", "");
         return;
       }
       navigate(roleHome(result.user.role));
     } catch (err) {
       const hint =
-        err.message === "Invalid email or password"
+        err.message === "Invalid username/email or password"
           ? " Use a demo account below (password: Password123!) or reset your password."
           : "";
       setError(`${err.message}${hint}`);
@@ -88,6 +96,17 @@ export function LoginPage() {
       setError(err.message);
     }
   }
+
+  const submitCode = useCallback(() => {
+    handleSubmit(onSubmitCode)();
+  }, [handleSubmit, pendingEmail, verifyLogin, navigate]);
+
+  useOtpAutoSubmit({
+    code: codeValue,
+    enabled: step === "verify",
+    submitting: isSubmitting,
+    onComplete: submitCode
+  });
 
   async function onResend() {
     setError("");
@@ -114,12 +133,15 @@ export function LoginPage() {
       setInfo(result.message || "A new verification code was sent.");
       setDevCode(result.devCode || "");
       setValue("code", result.devCode || "");
+      startCooldown(60);
     } catch (err) {
       setError(err.message);
     } finally {
       setResending(false);
     }
   }
+
+  if (isAuthenticated) return <Navigate to={roleHome(user.role)} replace />;
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -140,7 +162,7 @@ export function LoginPage() {
             Sign in to the cargo marketplace
           </h1>
           <p className="mt-4 max-w-md text-on-primary-container">
-            We send a verification code to your email every time you sign in.
+            Sign in securely with your username and password.
           </p>
         </div>
 
@@ -148,8 +170,8 @@ export function LoginPage() {
           {step === "credentials" ? (
             <form className="space-y-4" onSubmit={handleSubmit(onSubmitCredentials)}>
               <label className="block text-sm">
-                <span className="mb-1.5 block font-medium text-on-surface-variant">Email</span>
-                <input className="stitch-input" type="email" {...register("email", { required: true })} />
+                <span className="mb-1.5 block font-medium text-on-surface-variant">Username or email</span>
+                <input className="stitch-input" autoComplete="username" {...register("identifier", { required: true })} />
               </label>
               <label className="block text-sm">
                 <span className="mb-1.5 block font-medium text-on-surface-variant">Password</span>
@@ -176,7 +198,7 @@ export function LoginPage() {
                 </Link>
               </div>
               <Button className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Sending code…" : "Continue"}
+                {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
             </form>
           ) : (
@@ -211,8 +233,13 @@ export function LoginPage() {
                 />
               </label>
               <p className="text-xs text-on-surface-variant">
-                Geli 6-digit code-ka aad ka heshay email-kaaga (eeg spam folder).
+                Geli 6-digit code-ka email-kaaga (eeg spam). Marka 6 xaraf la buuxiyo, si toos ah ayaa loo xaqiijinayaa.
               </p>
+              {secondsLeft > 0 && (
+                <p className="text-xs font-medium text-secondary-container">
+                  Resend code available in {secondsLeft}s
+                </p>
+              )}
               <OtpCodeBanner code={devCode || undefined} message={info} />
               {error && <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">{error}</p>}
               <Button className="w-full" disabled={isSubmitting}>
@@ -230,9 +257,9 @@ export function LoginPage() {
                   type="button"
                   className="font-semibold text-secondary-container hover:underline disabled:opacity-60"
                   onClick={onResend}
-                  disabled={resending}
+                  disabled={resending || !canResend}
                 >
-                  {resending ? "Sending…" : "Resend code"}
+                  {resending ? "Sending…" : canResend ? "Resend code" : `Resend in ${secondsLeft}s`}
                 </button>
               </div>
             </form>

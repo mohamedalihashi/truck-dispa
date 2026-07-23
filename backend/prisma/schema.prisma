@@ -92,6 +92,7 @@ enum EarningStatus {
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
+  username     String   @unique
   email        String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole
@@ -105,6 +106,7 @@ model User {
   driverImageUrl String? @map("driver_image_url")
   driverImagePublicId String? @map("driver_image_public_id")
   status       String   @default("Active")
+  isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   mustChangePassword Boolean @default(false) @map("must_change_password")
   failedLoginAttempts Int @default(0) @map("failed_login_attempts")
   lockedUntil DateTime? @map("locked_until") @db.Timestamptz()
@@ -232,6 +234,18 @@ model CargoRequest {
   description           String
   receiver              String?
   sender                String?
+  customerRole          String?       @map("customer_role")
+  senderName            String?       @map("sender_name")
+  senderPhone           String?       @map("sender_phone")
+  receiverName          String?       @map("receiver_name")
+  receiverPhone         String?       @map("receiver_phone")
+  fromRegion            String?       @map("from_region")
+  fromDistrict          String?       @map("from_district")
+  fromNeighborhood      String?       @map("from_neighborhood")
+  toRegion              String?       @map("to_region")
+  toDistrict            String?       @map("to_district")
+  toNeighborhood        String?       @map("to_neighborhood")
+  submissionKey         String?       @unique @map("submission_key") @db.Uuid
   specialInstructions   String?       @map("special_instructions")
   preferredPickupDate   DateTime?     @map("preferred_pickup_date") @db.Date
   quotedPrice           Decimal?      @map("quoted_price") @db.Decimal(12, 2)
@@ -290,6 +304,7 @@ model Trip {
   payments     Payment[]
   earnings     Earning[]
   feedback     TripFeedback?
+  feedbackToken DeliveryFeedbackToken?
   locationPoints TripLocationPoint[]
 
   @@index([status], map: "idx_trips_status")
@@ -380,17 +395,26 @@ model Setting {
 }
 
 model AuditLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actorId   String?  @map("actor_id") @db.Uuid
-  action    String
-  entity    String?
-  entityId  String?  @map("entity_id")
-  meta      Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?  @map("actor_id") @db.Uuid
+  action      String
+  entityType  String?  @map("entity")
+  entityId    String?  @map("entity_id")
+  description String?
+  oldValues   Json?    @map("old_values")
+  newValues   Json?    @map("new_values")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  status      String   @default("Success")
+  meta        Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   // Relations
-  actor User? @relation(fields: [actorId], references: [id])
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([userId, createdAt], map: "idx_audit_logs_user_created")
+  @@index([action, createdAt], map: "idx_audit_logs_action_created")
+  @@index([entityType, entityId], map: "idx_audit_logs_entity")
   @@map("audit_logs")
 }
 
@@ -417,6 +441,16 @@ model TripFeedback {
   driverId      String?  @map("driver_id") @db.Uuid
   rating        Int
   productRating Int?     @map("product_rating")
+  driverBehaviourRating Int? @map("driver_behaviour_rating")
+  deliverySpeedRating Int? @map("delivery_speed_rating")
+  cargoConditionRating Int? @map("cargo_condition_rating")
+  cargoReceivedSafely Boolean? @map("cargo_received_safely")
+  reportProblem Boolean @default(false) @map("report_problem")
+  complaintStatus String @default("None") @map("complaint_status")
+  senderName    String?  @map("sender_name")
+  senderPhone   String?  @map("sender_phone")
+  receiverName  String?  @map("receiver_name")
+  receiverPhone String?  @map("receiver_phone")
   comment       String?
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -426,4 +460,40 @@ model TripFeedback {
 
   @@index([driverId], map: "idx_trip_feedback_driver")
   @@map("trip_feedback")
+}
+
+model DeliveryFeedbackToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId    String    @unique @map("trip_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt, usedAt], map: "idx_delivery_feedback_tokens_validity")
+  @@map("delivery_feedback_tokens")
+}
+
+model SmsNotification {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType        String    @map("entity_type")
+  entityId          String    @map("entity_id")
+  event             String
+  recipientName     String?   @map("recipient_name")
+  recipientPhone    String    @map("recipient_phone")
+  message           String
+  status            String    @default("Pending")
+  providerMessageId String?   @map("provider_message_id")
+  failureReason     String?   @map("failure_reason")
+  attempts          Int       @default(0)
+  nextRetryAt       DateTime? @map("next_retry_at") @db.Timestamptz()
+  sentAt            DateTime? @map("sent_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@unique([event, recipientPhone, entityType, entityId], map: "uq_sms_event_recipient_entity")
+  @@index([status, nextRetryAt], map: "idx_sms_retry_queue")
+  @@map("sms_notifications")
 }

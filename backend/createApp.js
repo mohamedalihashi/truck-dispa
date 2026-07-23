@@ -14,6 +14,8 @@ import userRoutes from "./routes/users.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import paymentRoutes from "./routes/payments.routes.js";
 import earningsRoutes from "./routes/earnings.routes.js";
+import feedbackRoutes from "./routes/feedback.routes.js";
+import { auditContextMiddleware } from "./lib/auditContext.js";
 
 export function createNoopIo() {
   const noop = () => {};
@@ -62,6 +64,7 @@ export function createApp({ io } = {}) {
   app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(auditContextMiddleware);
   if (!process.env.VERCEL) {
     app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
   }
@@ -82,6 +85,7 @@ export function createApp({ io } = {}) {
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/public/feedback", feedbackRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/cargo-requests", cargoRequestRoutes);
   app.use("/api/trips", tripRoutes);

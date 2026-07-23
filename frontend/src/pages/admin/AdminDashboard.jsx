@@ -15,6 +15,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -26,7 +31,7 @@ import { MetricCard } from "../../components/ui/MetricCard";
 import { DataTable } from "../../components/ui/DataTable";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
-import { useAuditLogs, useDashboard, useReports, useTripFeedback, useTrips, useUsers } from "../../hooks/useApi";
+import { useAuditLogs, useDashboard, useDashboardAnalytics, useReports, useTripFeedback, useTrips, useUsers } from "../../hooks/useApi";
 import { money } from "../../utils/helpers";
 import { TripFeedbackPanel, StarRatingDisplay } from "../../components/TripFeedbackPanel";
 
@@ -34,6 +39,7 @@ const COLORS = ["#fe6b00", "#0d1c32", "#5979ff", "#ba1a1a", "#27ae60"];
 
 export function AdminDashboard() {
   const { data: stats } = useDashboard();
+  const { data: analytics } = useDashboardAnalytics();
   const { data: reports } = useReports("monthly");
   const { data: trips } = useTrips({ limit: 8 });
   const { data: feedback, isLoading: feedbackLoading } = useTripFeedback({ limit: 10 });
@@ -46,6 +52,9 @@ export function AdminDashboard() {
     revenue: row.revenue
   }));
   const shipmentData = reports?.shipments?.data || [];
+  const growthData = analytics?.growth || [];
+  const userRoleData = analytics?.userRoles || [];
+  const totalRoleUsers = userRoleData.reduce((total, row) => total + Number(row.value || 0), 0);
 
   return (
     <div className="space-y-8">
@@ -69,6 +78,76 @@ export function AdminDashboard() {
         <MetricCard icon={Truck} label="Total Trucks" value={stats?.totalTrucks ?? "—"} hint="+5%" tone="blue" />
         <MetricCard icon={Users} label="Active Drivers" value={stats?.totalDrivers ?? "—"} hint="Stable" tone="navy" />
         <MetricCard icon={Wallet} label="Total Revenue" value={money(stats?.revenue)} hint="+10%" tone="green" />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-12">
+        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] xl:col-span-8">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-primary-container">Growth Overview</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Users, cargo requests, and trips during the last three months.</p>
+            </div>
+            <span className="rounded-full bg-secondary-container/10 px-3 py-1 text-xs font-semibold text-secondary-container">
+              3-month trend
+            </span>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={growthData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#c5c6cd" />
+                <XAxis dataKey="name" stroke="#75777e" />
+                <YAxis allowDecimals={false} stroke="#75777e" />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="users" name="Users" stroke="#fe6b00" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="requests" name="Cargo requests" stroke="#5979ff" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="trips" name="Trips" stroke="#27ae60" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-[0px_4px_20px_rgba(0,0,0,0.05)] xl:col-span-4">
+          <div>
+            <h2 className="text-xl font-semibold text-primary-container">User Roles</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">Distribution of users across the platform.</p>
+          </div>
+          <div className="relative mt-3 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={userRoleData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={62}
+                  outerRadius={88}
+                  paddingAngle={3}
+                  stroke="none"
+                >
+                  {userRoleData.map((entry, index) => (
+                    <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-bold text-primary-container">{totalRoleUsers}</span>
+              <span className="text-xs text-on-surface-variant">Total users</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {userRoleData.map((row, index) => (
+              <div key={row.name} className="flex items-center justify-between gap-2 text-xs">
+                <span className="flex min-w-0 items-center gap-2 text-on-surface-variant">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                  <span className="truncate">{row.name}</span>
+                </span>
+                <span className="font-bold text-primary-container">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-12">

@@ -219,7 +219,7 @@ export function DriverJobsPage() {
                       </button>
                     )}
 
-                    {!["Cancelled"].includes(row.status) && (
+                    {row.status === "In Transit" && !row.deliveryProofUrl && (
                       <button
                         type="button"
                         className="p-1 text-on-surface-variant hover:text-secondary-container"
@@ -256,6 +256,11 @@ export function DriverJobsPage() {
               value={viewing.fare != null ? `$${Number(viewing.fare).toLocaleString()}` : "—"}
             />
             <Detail label="Cargo" value={viewing.cargo || viewing.description || "—"} className="sm:col-span-2" />
+            <Detail label="Booking customer role" value={viewing.customerRole ? `Customer is the ${viewing.customerRole.toLowerCase()}` : "—"} />
+            <Detail label="Sender" value={viewing.senderName || "—"} />
+            <Detail label="Sender phone" value={viewing.senderPhone || "—"} />
+            <Detail label="Receiver" value={viewing.receiverName || "—"} />
+            <Detail label="Receiver phone" value={viewing.receiverPhone || "—"} />
             <Detail
               label="Last location"
               value={

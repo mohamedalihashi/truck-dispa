@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
 
 const router = Router();
@@ -7,7 +7,7 @@ const router = Router();
 router.use(requireAuth);
 router.use(requirePasswordChanged);
 
-router.get("/dashboard", async (req, res, next) => {
+router.get("/dashboard", requirePermission("dashboard"), async (req, res, next) => {
   try {
     res.json(await db.dashboardStats({ role: req.user.role, userId: req.user.sub }));
   } catch (error) {
@@ -15,7 +15,15 @@ router.get("/dashboard", async (req, res, next) => {
   }
 });
 
-router.get("/revenue", requireRole("admin", "dispatcher"), async (req, res, next) => {
+router.get("/dashboard-analytics", requireRole("admin"), requirePermission("reports"), async (_req, res, next) => {
+  try {
+    res.json(await db.dashboardAnalytics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/revenue", requireRole("admin", "dispatcher"), requirePermission("reports"), async (req, res, next) => {
   try {
     res.json(await db.revenueReport({ period: req.query.period || "monthly" }));
   } catch (error) {
@@ -23,7 +31,7 @@ router.get("/revenue", requireRole("admin", "dispatcher"), async (req, res, next
   }
 });
 
-router.get("/performance", requireRole("admin", "dispatcher"), async (_req, res, next) => {
+router.get("/performance", requireRole("admin", "dispatcher"), requirePermission("reports"), async (_req, res, next) => {
   try {
     res.json(await db.performanceReport());
   } catch (error) {
@@ -31,7 +39,7 @@ router.get("/performance", requireRole("admin", "dispatcher"), async (_req, res,
   }
 });
 
-router.get("/shipments", requireRole("admin", "dispatcher"), async (_req, res, next) => {
+router.get("/shipments", requireRole("admin", "dispatcher"), requirePermission("reports"), async (_req, res, next) => {
   try {
     res.json({ data: await db.shipmentDistribution() });
   } catch (error) {
@@ -39,7 +47,7 @@ router.get("/shipments", requireRole("admin", "dispatcher"), async (_req, res, n
   }
 });
 
-router.get("/summary", requireRole("admin", "dispatcher"), async (req, res, next) => {
+router.get("/summary", requireRole("admin", "dispatcher"), requirePermission("reports"), async (req, res, next) => {
   try {
     const [dashboard, revenue, performance, shipments] = await Promise.all([
       db.dashboardStats(),

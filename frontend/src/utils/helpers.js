@@ -1,5 +1,5 @@
 export function money(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 export function paymentBalance(row) {
@@ -9,7 +9,7 @@ export function paymentBalance(row) {
 }
 
 export function isPayablePayment(row) {
-  return row && ["Pending", "Partial", "Failed"].includes(row.status) && paymentBalance(row) > 0;
+  return row && row.canPay !== false && ["Pending", "Partial", "Failed"].includes(row.status) && paymentBalance(row) > 0;
 }
 
 export function titleCase(value = "") {

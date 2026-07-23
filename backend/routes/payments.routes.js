@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
 import { getWaafiPublicConfig } from "../services/waafiPayService.js";
 
@@ -7,6 +7,7 @@ const router = Router();
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("payments"));
 
 router.get("/waafi/config", requireRole("admin", "customer"), (_req, res) => {
   res.json(getWaafiPublicConfig());

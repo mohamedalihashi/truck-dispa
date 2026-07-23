@@ -1,4 +1,6 @@
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma.js";
+import { mergeRolePermissions } from "../lib/permissions.js";
 
 const jwtSecret = process.env.JWT_SECRET;
 
@@ -50,5 +52,45 @@ export function requireRole(...roles) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
     next();
+  };
+}
+
+export async function requireSuperAdmin(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user?.sub },
+      select: { role: true, isSuperAdmin: true },
+    });
+    if (!user || user.role !== "admin" || !user.isSuperAdmin) {
+      return res.status(403).json({ message: "Super Admin permission required" });
+    }
+    req.isSuperAdmin = true;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+export function requirePermission(permission) {
+  return async (req, res, next) => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user?.sub },
+        select: { role: true, isSuperAdmin: true },
+      });
+      if (!user) return res.status(401).json({ message: "Authentication required" });
+      if (user.isSuperAdmin) {
+        req.isSuperAdmin = true;
+        return next();
+      }
+      const row = await prisma.setting.findUnique({ where: { key: "rolePermissions" } });
+      const permissions = mergeRolePermissions(row?.value);
+      if (!permissions[user.role]?.[permission]) {
+        return res.status(403).json({ message: `Your role is not allowed to access ${permission}` });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 }

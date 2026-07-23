@@ -21,7 +21,7 @@ import {
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../contexts/SocketContext";
-import { useRealtimeInvalidation } from "../hooks/useApi";
+import { usePermissions, useRealtimeInvalidation, useSettings } from "../hooks/useApi";
 import { useDriverGpsTracking } from "../hooks/useDriverGpsTracking";
 import { navForRole, roleHome } from "../utils/helpers";
 import { resolveUploadUrl } from "../config/api.js";
@@ -49,8 +49,28 @@ const primaryLabels = {
   admin: "Add User"
 };
 
+const navPermissions = {
+  "": "dashboard",
+  users: "users",
+  drivers: "users",
+  requests: "requests",
+  trips: "trips",
+  jobs: "trips",
+  truck: "trucks",
+  trucks: "trucks",
+  payments: "payments",
+  earnings: "earnings",
+  tracking: "tracking",
+  reports: "reports",
+  "audit-logs": "auditLogs",
+  settings: "settings",
+  notifications: "notifications"
+};
+
 export function DashboardLayout() {
   const { user, logout } = useAuth();
+  const { data: settings } = useSettings({ enabled: user.role === "admin" });
+  const { data: permissionData } = usePermissions();
   const { connected } = useSocket();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -64,13 +84,16 @@ export function DashboardLayout() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const items = navForRole(user.role);
+  const permissions = permissionData?.permissions || {};
+  const items = navForRole(user.role).filter((item) => permissions[navPermissions[item.to ?? ""]] !== false);
   const base = roleHome(user.role);
-  const brand = user.role === "admin" ? "Truck Dispatcher" : "TruckDispatch";
+  const companyName = settings?.general?.companyName?.trim();
+  const brand = user.role === "admin" ? (companyName || "Truck Dispatcher") : "TruckDispatch";
+  const accountLabel = user.role === "admin" && companyName ? companyName : user.name;
   const avatarSrc = user.avatarUrl ? resolveUploadUrl(user.avatarUrl) : null;
 
-  function signOut() {
-    logout();
+  async function signOut() {
+    await logout();
     navigate("/login");
   }
 
@@ -141,10 +164,17 @@ export function DashboardLayout() {
           className="shrink-0 space-y-2 border-t border-white/10 bg-primary-container px-3 py-3"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
         >
-          <Button className="h-9 w-full text-sm" onClick={primaryAction}>
-            <Plus size={15} />
-            {primaryLabels[user.role] || "New Dispatch"}
-          </Button>
+          {(
+            (user.role === "admin" && permissions.users !== false) ||
+            (user.role === "dispatcher" && permissions.users !== false) ||
+            (user.role === "customer" && permissions.requests !== false) ||
+            (user.role === "driver" && permissions.trips !== false)
+          ) && (
+            <Button className="h-9 w-full text-sm" onClick={primaryAction}>
+              <Plus size={15} />
+              {primaryLabels[user.role] || "New Dispatch"}
+            </Button>
+          )}
 
           <div className="flex items-center justify-between gap-2 px-1">
             <button
@@ -156,10 +186,10 @@ export function DashboardLayout() {
                 {avatarSrc ? (
                   <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  user.name?.charAt(0) || "U"
+                  accountLabel?.charAt(0) || "U"
                 )}
               </div>
-              <span className="truncate text-xs font-medium text-white">{user.name}</span>
+              <span className="truncate text-xs font-medium text-white">{accountLabel}</span>
             </button>
             <span
               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/80"
@@ -239,7 +269,7 @@ export function DashboardLayout() {
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <ThemeToggle />
-          <button
+          {permissions.notifications !== false && <button
             type="button"
             onClick={() => navigate(`${base}/notifications`)}
             className="relative rounded-full p-2 text-on-surface-variant transition hover:bg-secondary-fixed hover:text-secondary-container"
@@ -247,7 +277,7 @@ export function DashboardLayout() {
           >
             <Bell size={18} />
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-secondary-container" />
-          </button>
+          </button>}
           <div className="hidden h-7 w-px bg-outline-variant sm:block" />
           <button
             type="button"

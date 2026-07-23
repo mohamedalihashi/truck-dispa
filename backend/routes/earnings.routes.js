@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
 import { getCommissionSettings } from "../services/commissionService.js";
 
@@ -7,6 +7,7 @@ const router = Router();
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("earnings"));
 
 router.get("/commission", requireRole("admin", "driver", "dispatcher"), async (_req, res) => {
   res.json(await getCommissionSettings());

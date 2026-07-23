@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import { connectDatabase, disconnectDatabase } from "./config/db.js";
 import { db } from "./services/dbService.js";
 import { createApp } from "./createApp.js";
+import { retryDueSms } from "./services/smsService.js";
 
 const port = Number(process.env.PORT || 4000);
 const uniqueOrigins = [
@@ -38,6 +39,11 @@ server.listen(port, () => {
   console.log(`TruckDispatch API running on http://127.0.0.1:${port}`);
 });
 
+const smsRetryTimer = !process.env.VERCEL
+  ? setInterval(() => void retryDueSms().catch((error) => console.warn("SMS retry failed:", error.message)), 60_000)
+  : null;
+smsRetryTimer?.unref();
+
 void (async () => {
   try {
     await connectDatabase();
@@ -63,6 +69,7 @@ server.on("error", (error) => {
 async function shutdown(signal) {
   console.log(`${signal} received — closing database connections`);
   await disconnectDatabase();
+  if (smsRetryTimer) clearInterval(smsRetryTimer);
   server.close(() => process.exit(0));
 }
 

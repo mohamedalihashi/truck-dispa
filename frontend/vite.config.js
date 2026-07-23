@@ -80,9 +80,10 @@ export default defineConfig({
           }
         ]
       },
+      // Keep SW off in `vite`/`npm run dev` — a stale workbox cache often
+      // serves a blank page after the Vite process restarts on Windows.
       devOptions: {
-        enabled: true,
-        type: "module"
+        enabled: false
       }
     })
   ],

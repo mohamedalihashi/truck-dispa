@@ -149,6 +149,11 @@ export function TripsPage() {
             <Detail label="Cargo request" value={viewing.cargoRequestId || "—"} />
             <Detail label="Pickup" value={viewing.pickup} />
             <Detail label="Destination" value={viewing.destination} />
+            <Detail label="Booking customer role" value={viewing.customerRole ? `Customer is the ${viewing.customerRole.toLowerCase()}` : "—"} />
+            <Detail label="Sender" value={viewing.senderName || "—"} />
+            <Detail label="Sender phone" value={viewing.senderPhone || "—"} />
+            <Detail label="Receiver" value={viewing.receiverName || "—"} />
+            <Detail label="Receiver phone" value={viewing.receiverPhone || "—"} />
             <Detail label="Distance" value={viewing.distance || "—"} />
             <Detail label="ETA" value={viewing.estimatedTime || viewing.eta || "—"} />
             <Detail

@@ -68,15 +68,6 @@ export function PaymentsPage() {
     setError("");
   }
 
-  function openCustomerEdit(row) {
-    setEditing({ ...row, customerEdit: true });
-    editForm.reset({
-      amount: String(row.amount ?? ""),
-      description: row.description || ""
-    });
-    setError("");
-  }
-
   async function onDelete(id) {
     if (!confirm("Delete this payment record?")) return;
     try {
@@ -152,7 +143,7 @@ export function PaymentsPage() {
         subtitle={
           isAdmin
             ? "Track marketplace payments, Waafi settlements, and invoice status in real time."
-            : "Edit your invoice, pay any amount via mobile wallet (Waafi), or review payment history."
+            : "Pay the required 30% deposit, then the remaining 70% after you confirm delivery."
         }
         actions={
           isAdmin ? (
@@ -169,7 +160,7 @@ export function PaymentsPage() {
             <div>
               <p className="font-semibold text-on-surface">Lacag bixin sugaysa</p>
               <p className="text-sm text-on-surface-variant">
-                {payable.length} invoice(s) — bixi inta aad rabto mobile wallet (Waafi).
+                {payable.length} invoice(s) — pay the required deposit or final balance via Waafi.
               </p>
             </div>
             {waafiEnabled && payable[0] ? (
@@ -226,6 +217,7 @@ export function PaymentsPage() {
                 label: "Status",
                 render: (row) => <StatusBadge status={row.status} />
               },
+              { key: "paymentStage", label: "Payment stage" },
               {
                 key: "createdAt",
                 label: "Date",
@@ -238,16 +230,6 @@ export function PaymentsPage() {
                       label: "Actions",
                       render: (row) => (
                         <div className="flex flex-wrap gap-1">
-                          {Number(row.amountPaid || 0) === 0 && row.status !== "Paid" ? (
-                            <Button
-                              variant="secondary"
-                              className="px-2 py-1 text-xs"
-                              onClick={() => openCustomerEdit(row)}
-                            >
-                              <Edit3 size={14} />
-                              Edit
-                            </Button>
-                          ) : null}
                           {waafiEnabled && isPayablePayment(row) ? (
                             <Button
                               variant="secondary"

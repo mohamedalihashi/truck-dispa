@@ -10,6 +10,9 @@ import {
   waafiPurchase
 } from "./waafiPayService.js";
 import { getCommissionSettings, syncEarningsForPayment } from "./commissionService.js";
+import { auditFields } from "../lib/auditContext.js";
+import { paymentSchedule } from "../lib/paymentWorkflow.js";
+import { mergeRolePermissions, PERMISSION_CATALOG } from "../lib/permissions.js";
 
 // ─── Status mapping helpers ──────────────────────────────────────────
 // Prisma enum values use underscores; the API uses spaces.
@@ -25,8 +28,10 @@ function mapUser(row) {
   return {
     id: row.id,
     name: row.name,
+    username: row.username || null,
     email: row.email,
     role: row.role,
+    isSuperAdmin: Boolean(row.isSuperAdmin),
     phone: row.phone,
     avatarUrl: row.avatarUrl || null,
     avatarPublicId: row.avatarPublicId || null,
@@ -65,6 +70,7 @@ function mapTruck(row) {
     truckType: row.truckType,
     driverId: row.driverId,
     driver: row.driver?.name || null,
+    driverPhone: row.driver?.phone || null,
     status: row.status,
     photoUrl1: row.photoUrl1 || null,
     photoUrl2: row.photoUrl2 || null,
@@ -91,6 +97,17 @@ function mapCargoRequest(row) {
     cargo: row.description,
     receiver: row.receiver,
     sender: row.sender,
+    customerRole: row.customerRole,
+    senderName: row.senderName || row.sender || null,
+    senderPhone: row.senderPhone,
+    receiverName: row.receiverName || row.receiver || null,
+    receiverPhone: row.receiverPhone,
+    fromRegion: row.fromRegion,
+    fromDistrict: row.fromDistrict,
+    fromNeighborhood: row.fromNeighborhood,
+    toRegion: row.toRegion,
+    toDistrict: row.toDistrict,
+    toNeighborhood: row.toNeighborhood,
     specialInstructions: row.specialInstructions,
     preferredPickupDate: row.preferredPickupDate,
     quotedPrice: row.quotedPrice != null ? Number(row.quotedPrice) : null,
@@ -137,6 +154,17 @@ function mapTrip(row) {
     status: tripStatusToApi(row.status),
     fare: Number(row.fare || 0),
     cargo: row.cargoRequest?.description || "Cargo",
+    customerRole: row.cargoRequest?.customerRole || null,
+    senderName: row.cargoRequest?.senderName || row.cargoRequest?.sender || null,
+    senderPhone: row.cargoRequest?.senderPhone || null,
+    receiverName: row.cargoRequest?.receiverName || row.cargoRequest?.receiver || null,
+    receiverPhone: row.cargoRequest?.receiverPhone || null,
+    fromRegion: row.cargoRequest?.fromRegion || null,
+    fromDistrict: row.cargoRequest?.fromDistrict || null,
+    fromNeighborhood: row.cargoRequest?.fromNeighborhood || null,
+    toRegion: row.cargoRequest?.toRegion || null,
+    toDistrict: row.cargoRequest?.toDistrict || null,
+    toNeighborhood: row.cargoRequest?.toNeighborhood || null,
     deliveryProofUrl: row.deliveryProofUrl,
     signatureUrl: row.signatureUrl,
     deliveryConfirmedAt: row.deliveryConfirmedAt,
@@ -165,6 +193,14 @@ function mapFeedback(row) {
     driverId: row.driverId,
     rating: row.rating,
     productRating: row.productRating,
+    driverBehaviourRating: row.driverBehaviourRating,
+    deliverySpeedRating: row.deliverySpeedRating,
+    cargoConditionRating: row.cargoConditionRating,
+    cargoReceivedSafely: row.cargoReceivedSafely,
+    reportProblem: row.reportProblem,
+    complaintStatus: row.complaintStatus,
+    senderName: row.senderName,
+    receiverName: row.receiverName,
     comment: row.comment,
     createdAt: row.createdAt,
   };
@@ -239,13 +275,14 @@ export const db = {
   async ensureAdmin() {
     const existing = await prisma.user.findFirst({
       where: { email: { equals: ADMIN.email, mode: "insensitive" } },
-      select: { id: true, role: true, status: true, name: true, phone: true },
+      select: { id: true, role: true, status: true, name: true, phone: true, isSuperAdmin: true },
     });
 
     if (existing) {
       const needsUpdate =
         existing.role !== ADMIN.role ||
         existing.status !== "Active" ||
+        !existing.isSuperAdmin ||
         existing.name !== ADMIN.name ||
         existing.phone !== ADMIN.phone;
 
@@ -257,6 +294,7 @@ export const db = {
             status: "Active",
             name: ADMIN.name,
             phone: ADMIN.phone,
+            isSuperAdmin: true,
           },
         });
       }
@@ -268,6 +306,7 @@ export const db = {
     await prisma.user.create({
       data: {
         ...ADMIN,
+        isSuperAdmin: true,
         passwordHash,
       },
     });
@@ -280,7 +319,7 @@ export const db = {
 
     const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
     await prisma.user.create({
-      data: { ...ADMIN, passwordHash },
+      data: { ...ADMIN, isSuperAdmin: true, passwordHash },
     });
 
     return { seeded: true, demoPassword: DEMO_PASSWORD };
@@ -302,20 +341,42 @@ export const db = {
     };
   },
 
-  async findRegistrationConflict({ email, phone, plateNumber, nationalIdNumber }) {
+  async findUserByIdentifier(identifier) {
+    const value = identifier.trim();
+    const row = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: { equals: value, mode: "insensitive" } },
+          { email: { equals: value, mode: "insensitive" } },
+        ],
+      },
+      include: userInclude,
+    });
+    if (!row) return null;
+    return {
+      ...mapUser(row),
+      passwordHash: row.passwordHash,
+      failedLoginAttempts: row.failedLoginAttempts,
+      lockedUntil: row.lockedUntil,
+    };
+  },
+
+  async findRegistrationConflict({ username, email, phone, plateNumber, nationalIdNumber }) {
     const [user, truck] = await Promise.all([
       prisma.user.findFirst({
         where: { OR: [
           ...(email ? [{ email: { equals: email, mode: "insensitive" } }] : []),
+          ...(username ? [{ username: { equals: username, mode: "insensitive" } }] : []),
           ...(phone ? [{ phone }] : []),
           ...(nationalIdNumber ? [{ nationalIdNumber }] : []),
         ] },
-        select: { email: true, phone: true, nationalIdNumber: true },
+        select: { username: true, email: true, phone: true, nationalIdNumber: true },
       }),
       plateNumber ? prisma.truck.findUnique({ where: { plateNumber }, select: { id: true } }) : null,
     ]);
     if (truck) return "Plate number";
     if (!user) return null;
+    if (username && user.username?.toLowerCase() === username.toLowerCase()) return "Username";
     if (email && user.email.toLowerCase() === email.toLowerCase()) return "Email";
     if (phone && user.phone === phone) return "Phone";
     return "National ID number";
@@ -357,6 +418,7 @@ export const db = {
         { name: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
         { phone: { contains: search, mode: "insensitive" } },
+        ...(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(search) ? [{ id: search }] : []),
       ];
     }
     const offset = (Number(page) - 1) * Number(limit);
@@ -388,12 +450,13 @@ export const db = {
     return { total, active, inactive, customers, dispatchers, drivers, driverActive, trucks };
   },
 
-  async createUser({ name, email, password, passwordHash: suppliedPasswordHash, role, phone, customerProfile, nationalIdNumber, driverLicense, driverLicenseUrl, driverLicensePublicId, driverImageUrl, driverImagePublicId, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
+  async createUser({ name, username, email, password, passwordHash: suppliedPasswordHash, role, phone, customerProfile, nationalIdNumber, driverLicense, driverLicenseUrl, driverLicensePublicId, driverImageUrl, driverImagePublicId, dispatcherProfile, truck, mustChangePassword = false, actorId = null }) {
     const passwordHash = suppliedPasswordHash || await bcrypt.hash(password, 10);
     return withTransaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name,
+          username: username?.trim().toLowerCase() || null,
           email,
           passwordHash,
           role,
@@ -422,8 +485,12 @@ export const db = {
           error.status = 400;
           throw error;
         }
-        if (!nationalIdNumber || !driverLicense || !driverLicenseUrl || !driverImageUrl || !truck.registrationDocumentUrl) {
-          const error = new Error("Driver registration requires identity, licence, profile, and truck registration documents");
+        const documentUrls = Array.isArray(truck.documentUrls)
+          ? truck.documentUrls.filter(Boolean)
+          : [];
+        const registrationDocumentUrl = truck.registrationDocumentUrl || documentUrls[0];
+        if (!driverLicense || !driverLicenseUrl || !driverImageUrl || !registrationDocumentUrl) {
+          const error = new Error("Driver registration requires licence, profile photo, and truck documents");
           error.status = 400;
           throw error;
         }
@@ -434,11 +501,12 @@ export const db = {
             capacity: truck.capacity,
             truckType: truck.truckType,
             photoUrl1: truck.photoUrl1,
-            photoUrl2: truck.photoUrl2,
-            photoPublicId1: truck.photoPublicId1,
-            photoPublicId2: truck.photoPublicId2,
-            registrationDocumentUrl: truck.registrationDocumentUrl,
-            registrationDocumentPublicId: truck.registrationDocumentPublicId,
+            photoUrl2: truck.photoUrl2 || null,
+            photoPublicId1: truck.photoPublicId1 || null,
+            photoPublicId2: truck.photoPublicId2 || null,
+            registrationDocumentUrl,
+            registrationDocumentPublicId: truck.registrationDocumentPublicId || null,
+            documentUrls: documentUrls.length ? documentUrls : [registrationDocumentUrl],
             driverId: user.id,
             status: "Pending_Verification",
           },
@@ -467,9 +535,9 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId: actorId || user.id,
+          userId: actorId || user.id,
           action: "user.created",
-          entity: "users",
+          entityType: "users",
           entityId: user.id,
           meta: { role, mustChangePassword: Boolean(mustChangePassword) },
         },
@@ -480,7 +548,11 @@ export const db = {
     });
   },
 
-  async updateUser(id, payload) {
+  async updateUser(id, payload, { actorId = id, action = "profile.updated" } = {}) {
+    const previous = await prisma.user.findUnique({
+      where: { id },
+      select: { name: true, email: true, phone: true, avatarUrl: true, status: true, role: true, mustChangePassword: true },
+    });
     const data = {};
     if (payload.name !== undefined) data.name = payload.name;
     if (payload.email !== undefined) data.email = payload.email;
@@ -495,6 +567,18 @@ export const db = {
 
     if (Object.keys(data).length > 0) {
       await prisma.user.update({ where: { id }, data });
+      const safeChanges = Object.fromEntries(Object.entries(data).filter(([key]) => key !== "passwordHash"));
+      await prisma.auditLog.create({
+        data: auditFields({
+          userId: actorId,
+          action: payload.password ? "password.changed" : action,
+          entityType: "users",
+          entityId: id,
+          description: payload.password ? "User password changed" : "User profile or account updated",
+          oldValues: previous,
+          newValues: safeChanges,
+        }),
+      });
     }
     return this.findUserById(id);
   },
@@ -506,7 +590,7 @@ export const db = {
       await tx.user.update({ where: { id }, data: { status: "Active" } });
       await tx.truck.updateMany({ where: { driverId: id }, data: { status: "Available" } });
       await tx.auditLog.create({
-        data: { actorId, action: "driver.verified", entity: "users", entityId: id, meta: {} },
+        data: auditFields({ userId: actorId, action: "driver.verified", entityType: "users", entityId: id, description: "Driver account verified", oldValues: { status: driver.status }, newValues: { status: "Active" }, meta: {} }),
       });
       const updated = await tx.user.findUnique({ where: { id }, include: userInclude });
       return mapUser(updated);
@@ -515,9 +599,19 @@ export const db = {
 
   async deleteUser(id) {
     return withTransaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id },
+        select: { role: true },
+      });
+      if (!user) return false;
+      if (user.role === "admin") {
+        const error = new Error("Admin users cannot be deleted");
+        error.status = 403;
+        throw error;
+      }
       await tx.auditLog.updateMany({
-        where: { actorId: id },
-        data: { actorId: null },
+        where: { userId: id },
+        data: { userId: null },
       });
       const result = await tx.user.deleteMany({ where: { id } });
       return result.count > 0;
@@ -687,6 +781,13 @@ export const db = {
   },
 
   async createCargoRequest(payload) {
+    if (payload.submissionKey) {
+      const existing = await prisma.cargoRequest.findFirst({
+        where: { submissionKey: payload.submissionKey, customerId: payload.customerId },
+        include: cargoRequestInclude,
+      });
+      if (existing) return { request: mapCargoRequest(existing), notification: null };
+    }
     const id = `REQ-${Math.floor(9000 + Math.random() * 1000)}`;
 
     return withTransaction(async (tx) => {
@@ -701,6 +802,18 @@ export const db = {
           description: payload.description,
           receiver: payload.receiver || null,
           sender: payload.sender || null,
+          customerRole: payload.customerRole || null,
+          senderName: payload.senderName || null,
+          senderPhone: payload.senderPhone || null,
+          receiverName: payload.receiverName || null,
+          receiverPhone: payload.receiverPhone || null,
+          fromRegion: payload.fromRegion || null,
+          fromDistrict: payload.fromDistrict || null,
+          fromNeighborhood: payload.fromNeighborhood?.trim() || null,
+          toRegion: payload.toRegion || null,
+          toDistrict: payload.toDistrict || null,
+          toNeighborhood: payload.toNeighborhood?.trim() || null,
+          submissionKey: payload.submissionKey || null,
           specialInstructions: payload.specialInstructions || null,
           preferredPickupDate: payload.preferredPickupDate
             ? new Date(payload.preferredPickupDate)
@@ -719,9 +832,9 @@ export const db = {
         }),
         tx.auditLog.create({
           data: {
-            actorId: payload.customerId,
+            userId: payload.customerId,
             action: "cargo.created",
-            entity: "cargo_requests",
+            entityType: "cargo_requests",
             entityId: id,
           },
         })
@@ -754,6 +867,17 @@ export const db = {
     if (payload.description !== undefined) data.description = payload.description;
     if (payload.receiver !== undefined) data.receiver = payload.receiver;
     if (payload.sender !== undefined) data.sender = payload.sender;
+    if (payload.customerRole !== undefined) data.customerRole = payload.customerRole;
+    if (payload.senderName !== undefined) data.senderName = payload.senderName;
+    if (payload.senderPhone !== undefined) data.senderPhone = payload.senderPhone;
+    if (payload.receiverName !== undefined) data.receiverName = payload.receiverName;
+    if (payload.receiverPhone !== undefined) data.receiverPhone = payload.receiverPhone;
+    if (payload.fromRegion !== undefined) data.fromRegion = payload.fromRegion;
+    if (payload.fromDistrict !== undefined) data.fromDistrict = payload.fromDistrict;
+    if (payload.fromNeighborhood !== undefined) data.fromNeighborhood = payload.fromNeighborhood.trim();
+    if (payload.toRegion !== undefined) data.toRegion = payload.toRegion;
+    if (payload.toDistrict !== undefined) data.toDistrict = payload.toDistrict;
+    if (payload.toNeighborhood !== undefined) data.toNeighborhood = payload.toNeighborhood.trim();
     if (payload.specialInstructions !== undefined) data.specialInstructions = payload.specialInstructions;
     if (payload.preferredPickupDate !== undefined) {
       data.preferredPickupDate = payload.preferredPickupDate
@@ -769,10 +893,21 @@ export const db = {
       where: { id },
       include: cargoRequestInclude,
     });
+    await prisma.auditLog.create({
+      data: auditFields({
+        userId: customerId || existing.customerId,
+        action: "cargo.updated",
+        entityType: "cargo_requests",
+        entityId: id,
+        description: `Cargo request ${id} updated`,
+        oldValues: existing,
+        newValues: data,
+      }),
+    });
     return mapCargoRequest(updated);
   },
 
-  async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, driverId }) {
+  async submitCargoQuote(id, { quotedPrice, quotedEstimatedTime, quoteNotes, driverId, dispatcherId }) {
     return withTransaction(async (tx) => {
       const existing = await tx.cargoRequest.findUnique({ where: { id } });
       if (!existing) return null;
@@ -813,6 +948,7 @@ export const db = {
           quoteVersion: (existing.quoteVersion || 0) + 1,
           driverId,
           truckId: truck.id,
+          dispatcherId: dispatcherId || existing.dispatcherId,
           customerDecisionAt: null,
           customerDecisionNote: null,
         },
@@ -828,9 +964,9 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId: driverId,
+          userId: driverId,
           action: "cargo.quote.sent",
-          entity: "cargo_requests",
+          entityType: "cargo_requests",
           entityId: id,
           meta: { quotedPrice: Number(quotedPrice), quotedEstimatedTime },
         },
@@ -860,6 +996,11 @@ export const db = {
         error.status = 400;
         throw error;
       }
+      if (!existing.driverId || !existing.truckId || !existing.quotedPrice) {
+        const error = new Error("The quotation must include a driver, truck, and price");
+        error.status = 400;
+        throw error;
+      }
 
       await tx.cargoRequest.update({
         where: { id },
@@ -869,6 +1010,68 @@ export const db = {
           customerDecisionNote: null,
         },
       });
+
+      const existingTrip = await tx.trip.findFirst({
+        where: { cargoRequestId: id, status: { notIn: ["Delivered", "Cancelled"] } },
+        orderBy: { createdAt: "desc" },
+      });
+      const tripId = existingTrip?.id || `SHP-${Math.floor(10000 + Math.random() * 90000)}`;
+      const pickupCoords = coordsFromPlaceName(existing.pickup);
+      if (existingTrip) {
+        await tx.trip.update({
+          where: { id: tripId },
+          data: {
+            driverId: existing.driverId,
+            dispatcherId: existing.dispatcherId,
+            truckId: existing.truckId,
+            status: "Pending",
+            fare: existing.quotedPrice,
+            estimatedTime: existing.quotedEstimatedTime,
+          },
+        });
+      } else {
+        await tx.trip.create({
+          data: {
+            id: tripId,
+            cargoRequestId: id,
+            customerId,
+            driverId: existing.driverId,
+            dispatcherId: existing.dispatcherId,
+            truckId: existing.truckId,
+            pickup: existing.pickup,
+            destination: existing.destination,
+            distance: payloadDistance(existing.pickup, existing.destination),
+            estimatedTime: existing.quotedEstimatedTime,
+            status: "Pending",
+            fare: existing.quotedPrice,
+            lastLat: pickupCoords.lat,
+            lastLng: pickupCoords.lng,
+            lastLocationAt: new Date(),
+          },
+        });
+        await tx.tripLocationPoint.create({
+          data: { tripId, lat: pickupCoords.lat, lng: pickupCoords.lng },
+        });
+      }
+
+      const payment = await tx.payment.findFirst({ where: { tripId } });
+      if (!payment) {
+        await tx.payment.create({
+          data: {
+            tripId,
+            customerId,
+            amount: existing.quotedPrice,
+            amountPaid: 0,
+            status: "Pending",
+            method: "waafipay",
+            provider: "waafipay",
+            currency: process.env.WAAFI_CURRENCY || "SLSH",
+            referenceId: buildWaafiReferenceId(tripId),
+            description: `Shipment ${tripId} — 30% deposit required to confirm`,
+          },
+        });
+      }
+      await tx.truck.update({ where: { id: existing.truckId }, data: { status: "Busy" } });
 
       if (existing.driverId) {
         await tx.notification.create({
@@ -884,8 +1087,19 @@ export const db = {
         data: {
           userId: customerId,
           type: "quote.accepted",
-          message: `You approved the quotation for ${id}. A driver will be assigned soon.`,
+          message: `Quotation approved for ${id}. Pay the 30% deposit to confirm trip ${tripId}.`,
         },
+      });
+
+      await tx.auditLog.create({
+        data: auditFields({
+          userId: customerId,
+          action: "cargo.quote.accepted",
+          entityType: "cargo_requests",
+          entityId: id,
+          description: `Customer accepted quote and deposit invoice was created for trip ${tripId}`,
+          newValues: { tripId, total: Number(existing.quotedPrice), depositPercent: 30 },
+        }),
       });
 
       const request = await tx.cargoRequest.findUnique({
@@ -974,6 +1188,16 @@ export const db = {
         const error = new Error("Approved request is missing quotation details");
         error.status = 400;
         throw error;
+      }
+      if (currentStatus === "Approved") {
+        const pendingTrip = await tx.trip.findFirst({ where: { cargoRequestId: id }, orderBy: { createdAt: "desc" } });
+        const payment = pendingTrip ? await tx.payment.findFirst({ where: { tripId: pendingTrip.id } }) : null;
+        const requiredDeposit = Number(current.quotedPrice || 0) * 0.3;
+        if (!payment || Number(payment.amountPaid || 0) < requiredDeposit - 0.01) {
+          const error = new Error("The customer must pay the 30% deposit before the trip can be confirmed or assigned");
+          error.status = 409;
+          throw error;
+        }
       }
 
       const tripFare = current.quotedPrice != null
@@ -1080,6 +1304,18 @@ export const db = {
         },
       });
 
+      await tx.auditLog.create({
+        data: auditFields({
+          userId: dispatcherId,
+          action: "trip.assigned",
+          entityType: "trips",
+          entityId: tripId,
+          description: `Driver and truck assigned to cargo request ${id}`,
+          oldValues: { driverId: existing.driverId, truckId: existing.truckId },
+          newValues: { driverId, truckId, cargoRequestId: id },
+        }),
+      });
+
       const request = await tx.cargoRequest.findUnique({
         where: { id },
         include: cargoRequestInclude,
@@ -1149,6 +1385,18 @@ export const db = {
           },
         });
       }
+
+      await tx.auditLog.create({
+        data: auditFields({
+          userId: actorId || existing.customerId,
+          action: "cargo.cancelled",
+          entityType: "cargo_requests",
+          entityId: id,
+          description: `Cargo request ${id} cancelled`,
+          oldValues: { status: apiStatus },
+          newValues: { status: "Cancelled" },
+        }),
+      });
 
       const request = await tx.cargoRequest.findUnique({
         where: { id },
@@ -1235,6 +1483,11 @@ export const db = {
       error.status = 403;
       throw error;
     }
+    if (status === "Delivered" && !existing.deliveryProofUrl) {
+      const error = new Error("Upload proof of delivery before marking the trip delivered");
+      error.status = 400;
+      throw error;
+    }
 
     const dbStatus = tripStatusToDb(status);
 
@@ -1306,9 +1559,9 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId,
+          userId: actorId,
           action: "trip.status.updated",
-          entity: "trips",
+          entityType: "trips",
           entityId: id,
           meta: { status },
         },
@@ -1421,6 +1674,17 @@ export const db = {
     }).catch(() => null);
 
     if (!trip) return null;
+    await prisma.auditLog.create({
+      data: auditFields({
+        userId: driverId || existing.driverId,
+        action: "trip.proof.uploaded",
+        entityType: "trips",
+        entityId: id,
+        description: `Proof of delivery uploaded for trip ${id}`,
+        oldValues: { deliveryProofUrl: existing.deliveryProofUrl, signatureUrl: existing.signatureUrl },
+        newValues: { deliveryProofUrl: trip.deliveryProofUrl, signatureUrl: trip.signatureUrl },
+      }),
+    });
     return { id, deliveryProofUrl: trip.deliveryProofUrl, signatureUrl: trip.signatureUrl };
   },
 
@@ -1469,9 +1733,9 @@ export const db = {
 
       await tx.auditLog.create({
         data: {
-          actorId: customerId,
+          userId: customerId,
           action: "trip.feedback.submitted",
-          entity: "trips",
+          entityType: "trips",
           entityId: tripId,
           meta: { rating, productRating },
         },
@@ -1499,19 +1763,32 @@ export const db = {
         error.status = 400;
         throw error;
       }
+      if (!trip.deliveryProofUrl) {
+        const error = new Error("Proof of delivery must be uploaded before customer confirmation");
+        error.status = 400;
+        throw error;
+      }
       const updated = await tx.trip.update({ where: { id: tripId }, data: { deliveryConfirmedAt: new Date() } });
+      await tx.notification.create({
+        data: {
+          userId: customerId,
+          type: "delivery.confirmed",
+          message: `Delivery confirmed for ${tripId}. The remaining 70% balance is now due.`,
+        },
+      });
       await tx.auditLog.create({
-        data: { actorId: customerId, action: "trip.delivery.confirmed", entity: "trips", entityId: tripId, meta: {} },
+        data: auditFields({ userId: customerId, action: "trip.delivery.confirmed", entityType: "trips", entityId: tripId, description: `Delivery confirmed for trip ${tripId}`, meta: {} }),
       });
       return mapTrip(updated);
     });
   },
 
-  async listTripFeedback({ driverId, dispatcherId, customerId, page = 1, limit = 20 } = {}) {
+  async listTripFeedback({ driverId, dispatcherId, customerId, complaintsOnly = false, page = 1, limit = 20 } = {}) {
     const where = {};
     if (driverId) where.driverId = driverId;
     if (customerId) where.customerId = customerId;
     if (dispatcherId) where.trip = { dispatcherId };
+    if (complaintsOnly) where.reportProblem = true;
 
     const offset = (Number(page) - 1) * Number(limit);
     const [data, total, aggregates] = await Promise.all([
@@ -1525,7 +1802,7 @@ export const db = {
       prisma.tripFeedback.count({ where }),
       prisma.tripFeedback.aggregate({
         where,
-        _avg: { rating: true, productRating: true },
+        _avg: { rating: true, productRating: true, driverBehaviourRating: true, deliverySpeedRating: true, cargoConditionRating: true },
         _count: { _all: true },
       }),
     ]);
@@ -1540,6 +1817,9 @@ export const db = {
         avgProductRating: aggregates._avg.productRating
           ? Number(aggregates._avg.productRating.toFixed(1))
           : null,
+        avgDriverBehaviour: aggregates._avg.driverBehaviourRating ? Number(aggregates._avg.driverBehaviourRating.toFixed(1)) : null,
+        avgDeliverySpeed: aggregates._avg.deliverySpeedRating ? Number(aggregates._avg.deliverySpeedRating.toFixed(1)) : null,
+        avgCargoCondition: aggregates._avg.cargoConditionRating ? Number(aggregates._avg.cargoConditionRating.toFixed(1)) : null,
       },
     };
   },
@@ -1661,6 +1941,44 @@ export const db = {
     };
   },
 
+  async dashboardAnalytics() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const [users, requests, trips, roleCounts] = await Promise.all([
+      prisma.user.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+      prisma.cargoRequest.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+      prisma.trip.findMany({ where: { createdAt: { gte: start } }, select: { createdAt: true } }),
+      prisma.user.groupBy({ by: ["role"], _count: { _all: true } }),
+    ]);
+    const months = Array.from({ length: 3 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - 2 + index, 1);
+      return {
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+        name: date.toLocaleString("en", { month: "long" }),
+        users: 0,
+        requests: 0,
+        trips: 0,
+      };
+    });
+    const byMonth = new Map(months.map((month) => [month.key, month]));
+    const add = (rows, field) => rows.forEach((row) => {
+      const key = `${row.createdAt.getFullYear()}-${String(row.createdAt.getMonth() + 1).padStart(2, "0")}`;
+      const month = byMonth.get(key);
+      if (month) month[field] += 1;
+    });
+    add(users, "users");
+    add(requests, "requests");
+    add(trips, "trips");
+
+    return {
+      growth: months.map(({ key: _key, ...month }) => month),
+      userRoles: roleCounts.map((row) => ({
+        name: row.role.charAt(0).toUpperCase() + row.role.slice(1),
+        value: row._count._all,
+      })),
+    };
+  },
+
   async revenueReport({ period = "monthly" } = {}) {
     // Use raw query for date bucketing — Prisma doesn't support date_trunc grouping natively
     const buckets =
@@ -1755,7 +2073,36 @@ export const db = {
 
   async getSettings() {
     const rows = await prisma.setting.findMany();
-    return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    const settings = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    return {
+      ...settings,
+      rolePermissions: mergeRolePermissions(settings.rolePermissions),
+      permissionCatalog: PERMISSION_CATALOG,
+    };
+  },
+
+  async getPermissionsForUser(userId) {
+    const [user, row] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true, isSuperAdmin: true } }),
+      prisma.setting.findUnique({ where: { key: "rolePermissions" } }),
+    ]);
+    if (!user) return null;
+    const all = Object.fromEntries(PERMISSION_CATALOG.map(({ key }) => [key, true]));
+    return {
+      role: user.role,
+      isSuperAdmin: user.isSuperAdmin,
+      permissions: user.isSuperAdmin ? all : mergeRolePermissions(row?.value)[user.role],
+      catalog: PERMISSION_CATALOG,
+    };
+  },
+
+  async updateRolePermissions(value) {
+    const normalized = mergeRolePermissions(value);
+    return prisma.setting.upsert({
+      where: { key: "rolePermissions" },
+      update: { value: normalized, updatedAt: new Date() },
+      create: { key: "rolePermissions", value: normalized },
+    });
   },
 
   async updateSettings(key, value) {
@@ -1772,6 +2119,11 @@ export const db = {
     if (!row) return null;
     const amount = Number(row.amount);
     const amountPaid = Number(row.amountPaid || 0);
+    const schedule = paymentSchedule({
+      amount,
+      amountPaid,
+      deliveryConfirmedAt: row.trip?.deliveryConfirmedAt,
+    });
     return {
       id: row.id,
       tripId: row.tripId,
@@ -1780,6 +2132,11 @@ export const db = {
       amount,
       amountPaid,
       balanceDue: Math.max(0, amount - amountPaid),
+      depositAmount: schedule.depositAmount,
+      requiredPaymentAmount: schedule.requiredAmount,
+      paymentStage: schedule.stage,
+      canPay: schedule.canPay,
+      deliveryConfirmedAt: row.trip?.deliveryConfirmedAt || null,
       status: row.status,
       method: row.method,
       currency: row.currency,
@@ -1838,6 +2195,23 @@ export const db = {
       error.status = 400;
       throw error;
     }
+    const schedule = paymentSchedule({
+      amount: totalDue,
+      amountPaid: alreadyPaid,
+      deliveryConfirmedAt: payment.trip?.deliveryConfirmedAt,
+    });
+    const requiredAmount = schedule.requiredAmount;
+    if (alreadyPaid > 0 && !payment.trip?.deliveryConfirmedAt) {
+      const error = new Error("The remaining 70% can only be paid after proof of delivery and customer confirmation");
+      error.status = 409;
+      throw error;
+    }
+    if (Math.abs(chargeAmount - requiredAmount) > 0.01) {
+      const stage = alreadyPaid <= 0 ? "30% deposit" : "remaining 70% balance";
+      const error = new Error(`This payment must be the exact ${stage}: ${requiredAmount.toFixed(2)}`);
+      error.status = 400;
+      throw error;
+    }
 
     const referenceId = buildWaafiAttemptReference(paymentId);
     const invoiceId = buildWaafiReferenceId(payment.tripId || payment.id);
@@ -1874,14 +2248,27 @@ export const db = {
             : null,
           providerResponse: response,
         },
-        include: { customer: true },
+        include: { customer: true, trip: true },
       });
+
+      if (alreadyPaid <= 0 && payment.tripId) {
+        await prisma.trip.update({
+          where: { id: payment.tripId },
+          data: { status: "Assigned" },
+        });
+        if (payment.trip?.cargoRequestId) {
+          await prisma.cargoRequest.update({
+            where: { id: payment.trip.cargoRequestId },
+            data: { status: "Assigned" },
+          });
+        }
+      }
 
       await prisma.auditLog.create({
         data: {
-          actorId,
+          userId: actorId,
           action: "payment.waafipay.completed",
-          entity: "payment",
+          entityType: "payment",
           entityId: paymentId,
           meta: {
             transactionId: response.params?.transactionId,
@@ -1918,7 +2305,7 @@ export const db = {
         )
       );
 
-      const earnings = await syncEarningsForPayment(paymentId);
+      const earnings = newStatus === "Paid" ? await syncEarningsForPayment(paymentId) : [];
 
       return {
         payment: this.mapPayment(updated),
@@ -2000,7 +2387,7 @@ export const db = {
     const payment = await prisma.payment.update({
       where: { id },
       data,
-      include: { customer: true },
+      include: { customer: true, trip: true },
     }).catch(() => null);
 
     if (!payment) return null;
@@ -2046,7 +2433,7 @@ export const db = {
     const updated = await prisma.payment.update({
       where: { id },
       data,
-      include: { customer: true },
+      include: { customer: true, trip: true },
     });
 
     return this.mapPayment(updated);
@@ -2057,7 +2444,7 @@ export const db = {
     const where = customerId ? { customerId } : {};
     const data = await prisma.payment.findMany({
       where,
-      include: { customer: true },
+      include: { customer: true, trip: true },
       orderBy: { createdAt: "desc" },
       take: Number(limit),
       skip: offset,
@@ -2210,9 +2597,9 @@ export const db = {
 
     await prisma.auditLog.create({
       data: {
-        actorId,
+        userId: actorId,
         action: "earning.paid_out",
-        entity: "earning",
+        entityType: "earning",
         entityId: id,
         meta: {
           recipientId: updated.recipientId,
@@ -2344,10 +2731,14 @@ export const db = {
 
   // ── Audit Logs ───────────────────────────────────────────────────
 
+  async recordAudit(payload) {
+    return prisma.auditLog.create({ data: auditFields(payload) });
+  },
+
   async listAuditLogs({ page = 1, limit = 50 } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
     const data = await prisma.auditLog.findMany({
-      include: { actor: true },
+      include: { user: true },
       orderBy: { createdAt: "desc" },
       take: Number(limit),
       skip: offset,
@@ -2355,13 +2746,126 @@ export const db = {
     return {
       data: data.map((row) => ({
         id: row.id,
-        actorId: row.actorId,
-        actor: row.actor?.name,
+        userId: row.userId,
+        actor: row.user?.name,
         action: row.action,
-        entity: row.entity,
+        entity: row.entityType,
         entityId: row.entityId,
         meta: row.meta,
         createdAt: row.createdAt,
+      })),
+    };
+  },
+
+  async userActivityReport({ userId, activityType, from, to, groupBy = "day", limit = 1000 } = {}) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { customerProfile: true, dispatcherProfile: true, truck: true },
+    });
+    if (!user) return null;
+
+    const createdAt = {};
+    if (from) createdAt.gte = new Date(from);
+    if (to) createdAt.lte = new Date(to);
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        userId,
+        ...(activityType ? { action: activityType } : {}),
+        ...(Object.keys(createdAt).length ? { createdAt } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Number(limit) || 1000, 5000),
+    });
+    const exact = (...actions) => logs.filter((row) => actions.includes(row.action)).length;
+    const prefix = (value) => logs.filter((row) => row.action.startsWith(value)).length;
+    const lastLogin = await prisma.auditLog.findFirst({
+      where: { userId, action: "auth.login" },
+      orderBy: { createdAt: "desc" },
+    });
+    const groupKey = (value) => {
+      const date = new Date(value);
+      if (groupBy === "month") return date.toISOString().slice(0, 7);
+      if (groupBy === "week") {
+        date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+      }
+      return date.toISOString().slice(0, 10);
+    };
+    const chartMap = new Map();
+    logs.forEach((log) => {
+      const key = groupKey(log.createdAt);
+      chartMap.set(key, (chartMap.get(key) || 0) + 1);
+    });
+
+    const tripsWhere = user.role === "driver" ? { driverId: userId } :
+      user.role === "dispatcher" ? { dispatcherId: userId } : { customerId: userId };
+    const requestsWhere = user.role === "customer" ? { customerId: userId } :
+      user.role === "dispatcher" ? { dispatcherId: userId } : { driverId: userId };
+    const [trips, requests, payments, earnings, feedback] = await Promise.all([
+      prisma.trip.findMany({ where: tripsWhere }),
+      prisma.cargoRequest.findMany({ where: requestsWhere }),
+      prisma.payment.findMany({ where: { customerId: userId } }),
+      prisma.earning.findMany({ where: { recipientId: userId } }),
+      user.role === "driver" ? prisma.tripFeedback.findMany({ where: { driverId: userId } }) : Promise.resolve([]),
+    ]);
+    const sum = (rows, field) => rows.reduce((total, row) => total + Number(row[field] || 0), 0);
+    const delivered = trips.filter((row) => tripStatusToApi(row.status) === "Delivered");
+    const cancelled = trips.filter((row) => tripStatusToApi(row.status) === "Cancelled");
+    let rolePerformance;
+    if (user.role === "driver") {
+      rolePerformance = {
+        assignedTrips: trips.length, acceptedTrips: trips.filter((row) => !["Pending", "Assigned"].includes(tripStatusToApi(row.status))).length,
+        completedTrips: delivered.length, cancelledTrips: cancelled.length,
+        onTimeDeliveries: delivered.filter((row) => !String(row.estimatedTime || "").toLowerCase().includes("late")).length,
+        lateDeliveries: delivered.filter((row) => String(row.estimatedTime || "").toLowerCase().includes("late")).length,
+        totalDistance: trips.reduce((total, row) => total + (Number.parseFloat(row.distance) || 0), 0),
+        totalEarnings: sum(earnings, "amount"), averageRating: feedback.length ? sum(feedback, "rating") / feedback.length : 0,
+      };
+    } else if (user.role === "dispatcher") {
+      rolePerformance = {
+        cargoRequestsManaged: requests.length, driversAssigned: new Set(trips.map((row) => row.driverId).filter(Boolean)).size,
+        trucksAssigned: new Set(trips.map((row) => row.truckId).filter(Boolean)).size,
+        activeDispatches: trips.filter((row) => !["Delivered", "Cancelled"].includes(tripStatusToApi(row.status))).length,
+        completedDispatches: delivered.length, cancelledDispatches: cancelled.length, totalRevenueManaged: sum(trips, "fare"),
+      };
+    } else if (user.role === "customer") {
+      rolePerformance = {
+        cargoRequestsCreated: requests.length,
+        acceptedRequests: requests.filter((row) => ["Accepted", "Assigned", "In Transit", "Delivered"].includes(reqStatusToApi(row.status))).length,
+        cancelledRequests: requests.filter((row) => reqStatusToApi(row.status) === "Cancelled").length,
+        completedDeliveries: delivered.length, totalAmountPaid: sum(payments, "amountPaid"),
+        outstandingBalance: payments.reduce((total, row) => total + Math.max(0, Number(row.amount) - Number(row.amountPaid)), 0),
+      };
+    } else {
+      rolePerformance = {
+        usersCreatedOrSuspended: logs.filter((row) => ["user.created", "user.updated", "user.deleted"].includes(row.action)).length,
+        trucksManaged: prefix("truck."), reportsGenerated: prefix("report."),
+        settingsChanged: prefix("settings."), paymentsReviewed: prefix("payment."),
+      };
+    }
+
+    return {
+      profile: mapUser(user),
+      summary: {
+        totalActivities: logs.length, cargoRequestsCreated: exact("cargo.created"),
+        tripsAssigned: exact("trip.assigned", "cargo.assigned"),
+        tripsAccepted: exact("trip.accepted") + logs.filter((row) => row.action === "trip.status.updated" && row.newValues?.status === "Accepted").length,
+        tripsCompleted: logs.filter((row) => row.action === "trip.status.updated" && row.newValues?.status === "Delivered").length,
+        tripsCancelled: logs.filter((row) => row.action.includes("cancel")).length,
+        quotesSubmitted: exact("cargo.quote.sent"), paymentsProcessed: prefix("payment."),
+        proofOfDeliveryUploads: exact("trip.proof.uploaded"),
+        profileOrAccountChanges: logs.filter((row) => ["user.updated", "profile.updated", "password.changed"].includes(row.action)).length,
+        lastLoginAt: lastLogin?.createdAt || null,
+        totalActiveDays: new Set(logs.map((row) => row.createdAt.toISOString().slice(0, 10))).size,
+      },
+      rolePerformance,
+      chart: [...chartMap].sort(([a], [b]) => a.localeCompare(b)).map(([period, activities]) => ({ period, activities })),
+      activityTypes: [...new Set(logs.map((row) => row.action))].sort(),
+      activities: logs.map((row) => ({
+        id: row.id, userId: row.userId, userName: user.name, userRole: user.role,
+        action: row.action, description: row.description || row.action.replaceAll(".", " "),
+        entityType: row.entityType, entityId: row.entityId, oldValues: row.oldValues,
+        newValues: row.newValues, ipAddress: row.ipAddress, userAgent: row.userAgent,
+        status: row.status, createdAt: row.createdAt,
       })),
     };
   },

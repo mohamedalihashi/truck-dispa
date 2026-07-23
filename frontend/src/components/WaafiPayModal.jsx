@@ -12,7 +12,7 @@ export function WaafiPayModal({ payment, open, onClose, onPay, loading, error, c
 
   useEffect(() => {
     if (payment) {
-      setPayAmount(String(paymentBalance(payment)));
+      setPayAmount(String(payment.requiredPaymentAmount || paymentBalance(payment)));
       setAccountNo("");
     }
   }, [payment?.id, payment?.amount, payment?.amountPaid]);
@@ -63,7 +63,7 @@ export function WaafiPayModal({ payment, open, onClose, onPay, loading, error, c
         <div className="rounded-xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-100">
           <p className="font-semibold">Ka hor inta aadan bixin</p>
           <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
-            <li>Waxaad bixin kartaa inta aad rabto ilaa balance-ka ka haray</li>
+            <li>{payment.paymentStage === "Deposit Due" ? "Bixi 30% deposit-ka si trip-ka loo xaqiijiyo" : "Bixi 70% balance-ka kadib delivery confirmation"}</li>
             <li>Isticmaal lambarka EVC Plus / ZAAD ee lacagta laga jarayo</li>
             <li>Marka aad taabato Pay now, taleefanka ayaa ku weydiinaya PIN / Approve</li>
           </ul>
@@ -76,15 +76,15 @@ export function WaafiPayModal({ payment, open, onClose, onPay, loading, error, c
           <input
             className="stitch-input w-full"
             type="number"
-            min="1"
-            max={balanceDue}
+            min="0.01"
+            max={payment.requiredPaymentAmount || balanceDue}
             step="0.01"
             value={payAmount}
-            onChange={(e) => setPayAmount(e.target.value)}
+            readOnly
             required
           />
           <span className="mt-1.5 block text-xs text-on-surface-variant">
-            Ugu badnaan: {money(balanceDue)} {currency}
+            Payment stage: {payment.paymentStage || "Payment due"} · Required: {money(payment.requiredPaymentAmount || balanceDue)} {currency}
           </span>
         </label>
 
@@ -120,7 +120,13 @@ export function WaafiPayModal({ payment, open, onClose, onPay, loading, error, c
           </Button>
           <Button
             type="submit"
-            disabled={loading || !accountNo.trim() || !payAmount || Number(payAmount) <= 0}
+            disabled={
+              loading ||
+              !accountNo.trim() ||
+              !payAmount ||
+              Number(payAmount) < 0.01 ||
+              Number(payAmount) > (payment.requiredPaymentAmount || balanceDue)
+            }
           >
             {loading ? "Processing…" : `Pay ${money(payAmount || 0)}`}
           </Button>

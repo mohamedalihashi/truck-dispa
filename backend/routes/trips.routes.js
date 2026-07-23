@@ -4,8 +4,10 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { z } from "zod";
-import { requireAuth, requireRole, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requireRole, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { createFeedbackToken } from "../services/deliveryFeedbackService.js";
+import { sendTripEventSms } from "../services/cargoSmsService.js";
 import { db } from "../services/dbService.js";
 
 const router = Router();
@@ -47,6 +49,7 @@ const feedbackSchema = z.object({
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("trips"));
 
 router.get("/", async (req, res, next) => {
   try {
@@ -98,6 +101,19 @@ router.patch("/:id/status", requireRole("driver", "dispatcher", "admin"), valida
     if (!result) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("trip.status.updated", result.trip);
     if (result.notification) req.app.get("io").emit("notification.created", result.notification);
+    const event = {
+      Loaded: "cargo.picked_up",
+      "In Transit": "cargo.in_transit",
+      Cancelled: "cargo.cancelled",
+    }[req.body.status];
+    if (req.body.status === "Delivered") {
+      const token = await createFeedbackToken(result.trip.id);
+      void sendTripEventSms(result.trip.id, "cargo.delivered", { feedbackToken: token })
+        .catch((error) => console.error("Delivered SMS failed:", error.message));
+    } else if (event) {
+      void sendTripEventSms(result.trip.id, event)
+        .catch((error) => console.error("Trip SMS failed:", error.message));
+    }
     res.json(result.trip);
   } catch (error) {
     next(error);
@@ -136,6 +152,10 @@ router.patch("/:id/location", requireRole("driver"), async (req, res, next) => {
     );
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     req.app.get("io").emit("location.updated", { tripId: trip.id, location: trip.lastLocation, eta: trip.eta });
+    if (trip.eta?.distanceKm <= 10) {
+      void sendTripEventSms(trip.id, "cargo.near_destination")
+        .catch((error) => console.error("Near-destination SMS failed:", error.message));
+    }
     res.json(trip);
   } catch (error) {
     next(error);

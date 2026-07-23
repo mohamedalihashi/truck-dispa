@@ -62,7 +62,12 @@ export function AuthProvider({ children }) {
       async resendCode(payload) {
         return api.resendCode(payload);
       },
-      logout() {
+      async logout() {
+        try {
+          await api.logout();
+        } catch {
+          // Local sign-out must still succeed if the server is unavailable.
+        }
         clearSession();
         setUser(null);
         setToken(null);

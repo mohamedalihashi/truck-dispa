@@ -142,7 +142,7 @@ export async function waafiPurchase({ accountNo, referenceId, invoiceId, amount,
       merchantUid: config.merchantUid,
       apiUserId: config.apiUserId,
       apiKey: config.apiKey,
-      paymentMethod: "MWALLET_ACCOUNT",
+      paymentMethod: "mwallet_account",
       payerInfo: {
         accountNo: normalizeWaafiAccountNo(accountNo)
       },

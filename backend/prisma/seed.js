@@ -13,8 +13,9 @@ async function ensureAdmin(passwordHash) {
       role: ADMIN.role,
       phone: ADMIN.phone,
       status: "Active",
+      isSuperAdmin: true,
     },
-    create: { ...ADMIN, passwordHash },
+    create: { ...ADMIN, isSuperAdmin: true, passwordHash },
   });
   console.log(`Admin ready: ${ADMIN.email}`);
 }

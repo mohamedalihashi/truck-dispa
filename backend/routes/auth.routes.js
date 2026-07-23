@@ -12,8 +12,20 @@ import { authLimiter, otpLimiter, passwordResetLimiter, registrationLimiter, res
 
 const router = Router();
 
+/** When false, register/login skip email OTP and complete immediately. */
+function isAuthOtpEnabled() {
+  return String(process.env.AUTH_OTP_ENABLED || "false").toLowerCase() === "true";
+}
+
+function publicUser(user) {
+  if (!user) return user;
+  const { passwordHash, ...safe } = user;
+  return safe;
+}
+
 export const registerSchema = z.object({
   name: z.string().min(2),
+  username: z.string().trim().min(3).max(30).regex(/^[a-zA-Z0-9._-]+$/),
   email: z.string().email(),
   password: strongPasswordSchema,
   role: z.literal("customer"),
@@ -26,8 +38,16 @@ export const registerSchema = z.object({
     companyAddress: z.string().trim().optional(),
     address: z.string().trim().optional(),
     businessRegistrationNumber: z.string().trim().optional(),
-    profilePhotoUrl: z.string().url().optional(),
-    profilePhotoPublicId: z.string().optional()
+    // Cloudinary https URLs or local /uploads/... fallback paths
+    profilePhotoUrl: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((value) => value.startsWith("/uploads/") || /^https?:\/\//i.test(value), {
+        message: "Invalid profile photo URL"
+      })
+      .optional(),
+    profilePhotoPublicId: z.string().trim().min(1).optional()
   }).optional()
 }).superRefine((data, ctx) => {
   if (!data.customerProfile) {
@@ -42,7 +62,7 @@ export const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email().transform((v) => v.trim().toLowerCase()),
+  identifier: z.string().trim().min(3),
   password: z.string().min(1)
 });
 
@@ -79,13 +99,13 @@ router.post("/register", registrationLimiter, registrationUpload.fields([
     if (req.body.role !== "customer") {
       return res.status(403).json({ message: "Public registration only supports customer accounts. Drivers must be registered by an admin." });
     }
-    const conflict = await db.findRegistrationConflict({ email: req.body.email, phone: req.body.phone });
+    const conflict = await db.findRegistrationConflict({ username: req.body.username, email: req.body.email, phone: req.body.phone });
     if (conflict) return res.status(409).json({ message: `${conflict} already registered` });
 
     const profilePhoto = await uploadBuffer(req.files?.profilePhoto?.[0], "customers");
-    if (profilePhoto) uploadedPublicIds.push(profilePhoto.publicId);
+    if (profilePhoto?.publicId) uploadedPublicIds.push(profilePhoto.publicId);
     const payload = {
-      name: req.body.name, email: req.body.email, phone: req.body.phone, password: req.body.password, role: "customer",
+      name: req.body.name, username: req.body.username, email: req.body.email, phone: req.body.phone, password: req.body.password, role: "customer",
       customerProfile: {
         customerType: req.body.customerType,
         city: req.body.city,
@@ -94,17 +114,37 @@ router.post("/register", registrationLimiter, registrationUpload.fields([
         companyPhone: req.body.companyPhone || undefined,
         companyAddress: req.body.companyAddress || undefined,
         businessRegistrationNumber: req.body.businessRegistrationNumber || undefined,
-        profilePhotoUrl: profilePhoto?.url,
-        profilePhotoPublicId: profilePhoto?.publicId
+        profilePhotoUrl: profilePhoto?.url || undefined,
+        profilePhotoPublicId: profilePhoto?.publicId || undefined
       }
     };
 
     const parsed = registerSchema.safeParse(payload);
     if (!parsed.success) {
       await deleteAssets(uploadedPublicIds);
-      return res.status(400).json({ message: "Validation failed", details: parsed.error.flatten() });
+      return res.status(400).json({
+        message: "Validation failed",
+        details: {
+          ...parsed.error.flatten(),
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message
+          }))
+        }
+      });
     }
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+    if (!isAuthOtpEnabled()) {
+      const user = await db.createUser({
+        ...parsed.data,
+        password: undefined,
+        passwordHash
+      });
+      const safe = publicUser(user);
+      return res.status(201).json({ user: safe, token: signToken(safe) });
+    }
+
     const pendingPayload = { ...parsed.data, password: undefined, passwordHash };
     const { code } = await db.createVerificationCode({ email: parsed.data.email, purpose: "register", payload: pendingPayload });
     const emailResult = await dispatchVerificationEmail(parsed.data.email, code, "register");
@@ -134,7 +174,8 @@ router.post("/register/verify", otpLimiter, validate(verifySchema), async (req, 
     if (existing) return res.status(409).json({ message: "Email already registered" });
 
     const user = await db.createUser({ ...parsed.data, password: undefined, passwordHash: payload.passwordHash });
-    res.status(201).json({ user, token: signToken(user) });
+    const safe = publicUser(user);
+    res.status(201).json({ user: safe, token: signToken(safe) });
   } catch (error) {
     next(error);
   }
@@ -142,9 +183,9 @@ router.post("/register/verify", otpLimiter, validate(verifySchema), async (req, 
 
 router.post("/login", authLimiter, validate(loginSchema), async (req, res, next) => {
   try {
-    const user = await db.findUserByEmail(req.body.email);
+    const user = await db.findUserByIdentifier(req.body.identifier);
     if (!user || !user.passwordHash) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Invalid username/email or password" });
     }
     if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
       return res.status(423).json({ message: "Account temporarily locked. Try again later." });
@@ -155,12 +196,19 @@ router.post("/login", authLimiter, validate(loginSchema), async (req, res, next)
     const valid = await bcrypt.compare(req.body.password, user.passwordHash);
     if (!valid) {
       await db.recordFailedLogin(user.id);
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Invalid username/email or password" });
     }
 
     await db.clearFailedLogins(user.id);
+    await db.recordAudit({
+      userId: user.id,
+      action: "auth.login",
+      entityType: "users",
+      entityId: user.id,
+      description: "User logged in",
+    });
 
-    const { passwordHash: _passwordHash, ...safe } = user;
+    const safe = publicUser(user);
     res.json({ user: safe, token: signToken(safe) });
   } catch (error) {
     if (isDbBusyError(error)) return dbBusyResponse(res);
@@ -179,7 +227,7 @@ router.post("/login/verify", otpLimiter, validate(verifySchema), async (req, res
 
     const user = await db.findUserByEmail(req.body.email);
     if (!user) return res.status(404).json({ message: "User not found" });
-    const { passwordHash: _passwordHash, ...safe } = user;
+    const safe = publicUser(user);
     res.json({ user: safe, token: signToken(safe) });
   } catch (error) {
     next(error);
@@ -298,6 +346,31 @@ router.get("/me", requireAuth, async (req, res, next) => {
     const user = await db.findUserById(req.user.sub);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/permissions", requireAuth, async (req, res, next) => {
+  try {
+    const permissions = await db.getPermissionsForUser(req.user.sub);
+    if (!permissions) return res.status(404).json({ message: "User not found" });
+    res.json(permissions);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/logout", requireAuth, async (req, res, next) => {
+  try {
+    await db.recordAudit({
+      userId: req.user.sub,
+      action: "auth.logout",
+      entityType: "users",
+      entityId: req.user.sub,
+      description: "User logged out",
+    });
+    res.json({ message: "Logged out" });
   } catch (error) {
     next(error);
   }

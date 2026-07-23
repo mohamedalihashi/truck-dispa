@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Pencil, Plus, Trash2, Truck, Wrench, XCircle, CheckCircle2 } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Trash2, Truck, Wrench, XCircle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { DataTable } from "../../components/ui/DataTable";
 import { useTruckMutations, useTruckSummary, useTrucks, useDrivers } from "../../hooks/useApi";
@@ -20,7 +20,7 @@ export function TrucksPage() {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { truckType: "Box Truck", capacity: "12 tons", status: "Available" }
+    defaultValues: { truckType: "", capacity: "12 tons", status: "Available" }
   });
 
   const assignedDriverIds = new Set((data?.data || []).map((t) => t.driverId));
@@ -29,7 +29,7 @@ export function TrucksPage() {
   function openCreate() {
     setEditing(null);
     setError("");
-    reset({ truckType: "Box Truck", capacity: "12 tons", status: "Available" });
+    reset({ truckType: "", capacity: "12 tons", status: "Available" });
     setOpen(true);
   }
 
@@ -132,6 +132,11 @@ export function TrucksPage() {
               { key: "capacity", label: "Capacity" },
               { key: "driver", label: "Driver" },
               {
+                key: "driverPhone",
+                label: "Driver Phone",
+                render: (row) => row.driverPhone || "—"
+              },
+              {
                 key: "status",
                 label: "Status",
                 render: (row) => <StatusBadge status={row.status} />
@@ -147,11 +152,24 @@ export function TrucksPage() {
                     <button type="button" className="p-1 text-error" onClick={() => onDelete(row.id)}>
                       <Trash2 size={16} />
                     </button>
-                    {["Available", "Busy", "Maintenance"].map((status) => (
-                      <Button key={status} variant="secondary" className="px-2 py-1 text-xs" onClick={() => setStatus(row.id, status)}>
-                        {status}
-                      </Button>
-                    ))}
+                    <label
+                      className="relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-outline-variant text-primary-container hover:bg-surface-container"
+                      title="Change truck status"
+                    >
+                      <span className="sr-only">Change truck status</span>
+                      <ChevronDown size={16} aria-hidden="true" />
+                      <select
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                        value={row.status}
+                        onChange={(event) => setStatus(row.id, event.target.value)}
+                        disabled={mutations.update.isPending}
+                        aria-label={`Change status for ${row.truckNumber}`}
+                      >
+                        <option value="Available">Available</option>
+                        <option value="Busy">Busy</option>
+                        <option value="Maintenance">Maintenance</option>
+                      </select>
+                    </label>
                   </div>
                 )
               }
@@ -166,12 +184,7 @@ export function TrucksPage() {
             <input className="stitch-input" placeholder="Truck number" {...register("truckNumber", { required: true })} />
             <input className="stitch-input" placeholder="Plate number" {...register("plateNumber", { required: true })} />
             <input className="stitch-input" placeholder="Capacity" {...register("capacity", { required: true })} />
-            <select className="stitch-input" {...register("truckType")}>
-              <option>Box Truck</option>
-              <option>Flatbed</option>
-              <option>Refrigerated</option>
-              <option>Tanker</option>
-            </select>
+            <input className="stitch-input" placeholder="Write truck type" {...register("truckType", { required: true })} />
             <select className="stitch-input sm:col-span-2" {...register("driverId", { required: true })}>
               <option value="">Select driver</option>
               {availableDrivers.map((driver) => (

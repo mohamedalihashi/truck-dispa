@@ -9,6 +9,13 @@ export function useDashboard() {
   return useQuery({ queryKey: ["dashboard"], queryFn: () => api.dashboardReport() });
 }
 
+export function useDashboardAnalytics() {
+  return useQuery({
+    queryKey: ["dashboard-analytics"],
+    queryFn: () => api.dashboardAnalytics()
+  });
+}
+
 export function useCargoRequests(params = {}) {
   return useQuery({
     queryKey: ["cargo-requests", params],
@@ -342,6 +349,37 @@ export function useSettings(options = {}) {
   });
 }
 
+export function usePermissions() {
+  return useQuery({
+    queryKey: ["permissions"],
+    queryFn: () => api.myPermissions(),
+    staleTime: 30_000
+  });
+}
+
+export function useUserActivityReport(params, options = {}) {
+  return useQuery({
+    queryKey: ["user-activity-report", params],
+    queryFn: () => api.userActivityReport(params),
+    enabled: Boolean(params?.userId),
+    ...options
+  });
+}
+
+export function useDeliveryFeedbackReport(params = {}) {
+  return useQuery({
+    queryKey: ["delivery-feedback-report", params],
+    queryFn: () => api.deliveryFeedbackReport(params)
+  });
+}
+
+export function useSmsNotifications(params = {}) {
+  return useQuery({
+    queryKey: ["sms-notifications", params],
+    queryFn: () => api.listSmsNotifications(params)
+  });
+}
+
 export function useCancelCargo() {
   const qc = useQueryClient();
   return useMutation({
@@ -378,6 +416,8 @@ export function useQuoteMutations() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["cargo-requests"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
+    qc.invalidateQueries({ queryKey: ["trips"] });
+    qc.invalidateQueries({ queryKey: ["payments"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
   };

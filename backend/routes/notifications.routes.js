@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { requireAuth, requirePasswordChanged } from "../middleware/auth.js";
+import { requireAuth, requirePasswordChanged, requirePermission } from "../middleware/auth.js";
 import { db } from "../services/dbService.js";
 
 const router = Router();
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
+router.use(requirePermission("notifications"));
 
 router.get("/", async (req, res, next) => {
   try {
