@@ -3,6 +3,10 @@ import { normalizeSomaliPhone } from "../lib/phone.js";
 
 const MAX_ATTEMPTS = 3;
 
+function looksLikePlaceholder(value = "") {
+  return /your[_-]?|replace-with|xxxxx|changeme|example|<|>/i.test(String(value || ""));
+}
+
 function providerConfig() {
   const rawUrl = String(process.env.SMS_API_URL || "").trim().replace(/\/+$/, "");
   const baseUrl = rawUrl && !/^https?:\/\//i.test(rawUrl) ? `https://${rawUrl}` : rawUrl;
@@ -11,6 +15,11 @@ function providerConfig() {
     apiKey: process.env.SMS_API_KEY,
     senderId: process.env.SMS_SENDER_ID || "ServiceSMS",
   };
+}
+
+export function isSmsConfigured() {
+  const { url, apiKey } = providerConfig();
+  return Boolean(url && apiKey && !looksLikePlaceholder(url) && !looksLikePlaceholder(apiKey));
 }
 
 export async function attemptSms(id) {

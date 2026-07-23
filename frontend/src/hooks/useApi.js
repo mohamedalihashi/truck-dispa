@@ -152,6 +152,7 @@ export function useRealtimeInvalidation() {
     qc.invalidateQueries({ queryKey: ["cargo-requests"] });
     qc.invalidateQueries({ queryKey: ["cargo-requests-summary"] });
     qc.invalidateQueries({ queryKey: ["trips"] });
+    qc.invalidateQueries({ queryKey: ["trip-route"] });
     qc.invalidateQueries({ queryKey: ["trucks"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });

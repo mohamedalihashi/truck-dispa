@@ -65,6 +65,7 @@ export const DRIVER_TRIP_FLOW = ["Accepted", "Arrived Pickup", "In Transit", "De
 
 /** Trip statuses where the driver phone should stream GPS to the server. */
 export const LIVE_TRACKING_STATUSES = [
+  "Assigned",
   "Accepted",
   "Arrived Pickup",
   "Loaded",

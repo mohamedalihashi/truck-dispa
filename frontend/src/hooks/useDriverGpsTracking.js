@@ -4,13 +4,17 @@ import { api } from "../services/api";
 import { useTrips } from "./useApi";
 import { LIVE_TRACKING_STATUSES } from "../utils/helpers";
 
-const SEND_INTERVAL_MS = 20_000;
+const SEND_INTERVAL_MS = 5_000;
 
 export function useDriverGpsTracking() {
   const { user } = useAuth();
   const isDriver = user?.role === "driver";
-  const { data } = useTrips({ limit: 50 }, { enabled: isDriver });
+  const { data } = useTrips(
+    { limit: 50 },
+    { enabled: isDriver, refetchInterval: isDriver ? 10_000 : false }
+  );
   const [active, setActive] = useState(false);
+  const [error, setError] = useState("");
   const [lastSentAt, setLastSentAt] = useState(null);
 
   const watchIdRef = useRef(null);
@@ -23,6 +27,7 @@ export function useDriverGpsTracking() {
   useEffect(() => {
     if (!isDriver || !trackingTrip?.id) {
       setActive(false);
+      setError("");
       if (watchIdRef.current != null) {
         navigator.geolocation?.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -33,11 +38,13 @@ export function useDriverGpsTracking() {
 
     if (!navigator.geolocation) {
       setActive(false);
+      setError("This browser does not support GPS.");
       return;
     }
 
     tripIdRef.current = trackingTrip.id;
     setActive(true);
+    setError("");
 
     async function sendLocation(lat, lng, force = false) {
       const tripId = tripIdRef.current;
@@ -50,8 +57,9 @@ export function useDriverGpsTracking() {
       try {
         await api.updateTripLocation(tripId, { lat, lng });
         setLastSentAt(new Date());
-      } catch {
-        // Retry on the next position update or interval tick.
+        setError("");
+      } catch (err) {
+        setError(err.message || "Could not send GPS location");
       }
     }
 
@@ -62,14 +70,21 @@ export function useDriverGpsTracking() {
         positionRef.current = { lat, lng };
         sendLocation(lat, lng);
       },
-      () => setActive(false),
-      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 }
+      (geoError) => {
+        setActive(false);
+        if (geoError?.code === geoError.PERMISSION_DENIED) {
+          setError("Allow location access in the browser so live tracking can work.");
+        } else {
+          setError("Waiting for GPS signal…");
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 3_000, timeout: 15_000 }
     );
 
     navigator.geolocation.getCurrentPosition(
       (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, true),
       () => {},
-      { enableHighAccuracy: true, timeout: 20_000 }
+      { enableHighAccuracy: true, timeout: 15_000 }
     );
 
     const timer = setInterval(() => {
@@ -91,6 +106,7 @@ export function useDriverGpsTracking() {
   return {
     trackingTripId: trackingTrip?.id ?? null,
     active,
+    error,
     lastSentAt
   };
 }

@@ -47,6 +47,14 @@ apiClient.interceptors.response.use(
 
     const err = new Error(message);
     if (data?.details) err.details = data.details;
+    if (data?.issues) {
+      err.issues = data.issues;
+      const firstIssue = data.issues[0];
+      const issueMessage = typeof firstIssue === "string" ? firstIssue : firstIssue?.message;
+      if (issueMessage && message === "Validation failed") {
+        err.message = issueMessage;
+      }
+    }
     return Promise.reject(err);
   }
 );

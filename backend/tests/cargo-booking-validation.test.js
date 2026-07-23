@@ -67,6 +67,7 @@ describe("cargo booking validation", () => {
   it("normalizes valid Somali mobile numbers to international format", () => {
     expect(normalizeSomaliPhone("061 234 5678")).toBe("+252612345678");
     expect(normalizeSomaliPhone("252612345678")).toBe("+252612345678");
-    expect(() => normalizeSomaliPhone("12345")).toThrow("valid Somali phone number");
+    expect(normalizeSomaliPhone("4235356467")).toBe("+4235356467");
+    expect(() => normalizeSomaliPhone("12345")).toThrow("valid phone number");
   });
 });

@@ -17,7 +17,7 @@ export const PERMISSION_CATALOG = [
 export const DEFAULT_ROLE_PERMISSIONS = {
   admin: Object.fromEntries(PERMISSION_CATALOG.map(({ key }) => [key, true])),
   dispatcher: {
-    dashboard: true, users: true, requests: true, trips: true, trucks: false,
+    dashboard: true, users: true, requests: true, trips: true, trucks: true,
     payments: false, earnings: true, tracking: true, reports: false,
     auditLogs: false, settings: false, notifications: true,
   },

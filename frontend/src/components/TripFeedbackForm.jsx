@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 import { Button } from "./ui/Button";
+import { useAuth } from "../contexts/AuthContext";
 import { api } from "../services/api";
 
 function StarRating({ label, value, onChange, disabled = false }) {
@@ -33,16 +34,20 @@ function StarRating({ label, value, onChange, disabled = false }) {
 }
 
 export function TripFeedbackForm({ trip, onSubmitted, compact = false }) {
+  const { user } = useAuth();
   const [rating, setRating] = useState(0);
   const [productRating, setProductRating] = useState(0);
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const isCustomerOwner = Boolean(user?.id) && trip.customerId === user.id;
 
   if (trip.feedback) {
     return (
       <div className={`rounded-xl border border-outline-variant/40 bg-surface-container-low ${compact ? "p-4" : "p-5"}`}>
-        <p className="text-sm font-semibold text-on-surface">Your feedback</p>
+        <p className="text-sm font-semibold text-on-surface">
+          {user?.role === "customer" ? "Your feedback" : "Customer feedback"}
+        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <FeedbackSummary label="Delivery service" value={trip.feedback.rating} />
           {trip.feedback.productRating ? (
@@ -57,6 +62,17 @@ export function TripFeedbackForm({ trip, onSubmitted, compact = false }) {
   }
 
   if (trip.status !== "Delivered") return null;
+
+  if (!isCustomerOwner) {
+    return (
+      <div className={`rounded-xl border border-outline-variant/40 bg-surface-container-low ${compact ? "p-4" : "p-5"}`}>
+        <p className="text-sm font-semibold text-on-surface">Waiting for customer rating</p>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Only the customer who booked this shipment can rate the delivery (Shipments page or the SMS feedback link).
+        </p>
+      </div>
+    );
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();

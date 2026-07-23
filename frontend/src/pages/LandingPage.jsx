@@ -338,29 +338,34 @@ export function LandingPage() {
             <div>
               <h5 className="mb-6 text-sm font-semibold text-primary">Company</h5>
               <ul className="space-y-4 text-on-surface-variant">
-                <li>About Us</li><li>Careers</li><li>Blog</li><li>Contact</li>
+                <li><Link to="/about" className="hover:text-primary">About Us</Link></li>
+                <li><Link to="/contact" className="hover:text-primary">Contact</Link></li>
+                <li><Link to="/register" className="hover:text-primary">Create account</Link></li>
               </ul>
             </div>
             <div>
               <h5 className="mb-6 text-sm font-semibold text-primary">Support</h5>
               <ul className="space-y-4 text-on-surface-variant">
-                <li>Help Center</li><li>FAQs</li><li>Terms & Conditions</li><li>Privacy Policy</li>
+                <li><Link to="/help" className="hover:text-primary">Help Center</Link></li>
+                <li><Link to="/faqs" className="hover:text-primary">FAQs</Link></li>
+                <li><Link to="/terms" className="hover:text-primary">Terms & Conditions</Link></li>
+                <li><Link to="/privacy" className="hover:text-primary">Privacy Policy</Link></li>
               </ul>
             </div>
             <div>
-              <h5 className="mb-6 text-sm font-semibold text-primary">Subscribe</h5>
-              <p className="mb-4 text-sm text-on-surface-variant">Get the latest Truck Dispatcher news and updates.</p>
-              <div className="flex gap-2">
-                <input className="flex-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm" placeholder="Email address" />
-                <button type="button" className="rounded-lg bg-primary px-4 py-2 text-white">Join</button>
+              <h5 className="mb-6 text-sm font-semibold text-primary">Get started</h5>
+              <p className="mb-4 text-sm text-on-surface-variant">Book a truck or sign in to your dispatcher dashboard.</p>
+              <div className="flex flex-wrap gap-2">
+                <Link to="/register" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white">Register</Link>
+                <Link to="/login" className="rounded-lg border border-outline-variant px-4 py-2 text-sm font-semibold">Sign in</Link>
               </div>
             </div>
           </div>
           <div className="flex flex-col items-center justify-between gap-4 border-t border-outline-variant pt-8 md:flex-row">
-            <p className="text-sm text-on-surface-variant">© 2024 TruckDispatch. All rights reserved.</p>
+            <p className="text-sm text-on-surface-variant">© {new Date().getFullYear()} TruckDispatch. All rights reserved.</p>
             <div className="flex gap-6 text-sm text-on-surface-variant">
-              <span>Cookie Settings</span>
-              <span>Sitemap</span>
+              <Link to="/privacy" className="hover:text-primary">Privacy</Link>
+              <Link to="/terms" className="hover:text-primary">Terms</Link>
             </div>
           </div>
         </div>

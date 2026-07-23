@@ -13,6 +13,12 @@ import {
 } from "../../data/somaliaLocations";
 
 const SOMALI_PHONE_PATTERN = /^(?:(?:\+|00)?252|0)?(?:6[1-9]|7\d|9\d)\d{7}$/;
+const LOOSE_PHONE_PATTERN = /^\+?\d{7,15}$/;
+
+function isValidPhone(value) {
+  const cleaned = String(value || "").replace(/[\s()-]/g, "");
+  return SOMALI_PHONE_PATTERN.test(cleaned) || LOOSE_PHONE_PATTERN.test(cleaned);
+}
 
 function getLocalDateValue(date = new Date()) {
   const year = date.getFullYear();
@@ -58,7 +64,7 @@ export function BookTruckPage() {
   const values = watch();
   const fromDistricts = somaliaLocations[values.fromRegion] || [];
   const toDistricts = somaliaLocations[values.toRegion] || [];
-  const profileReady = Boolean(user?.name?.trim() && SOMALI_PHONE_PATTERN.test((user?.phone || "").replace(/[\s-]/g, "")));
+  const profileReady = Boolean(user?.name?.trim() && isValidPhone(user?.phone));
 
   function changeRole(role) {
     setValue("customerRole", role, { shouldValidate: true });
@@ -70,27 +76,40 @@ export function BookTruckPage() {
   async function onSubmit(formValues) {
     setServerError("");
     if (!profileReady) {
-      setServerError("Add a valid Somali phone number to your profile before booking.");
+      setServerError("Add your name and a phone number (at least 7 digits) in Profile before booking.");
       return;
     }
     try {
       const payload = {
-        ...formValues,
+        customerRole: formValues.customerRole,
+        fromRegion: formValues.fromRegion,
+        fromDistrict: formValues.fromDistrict,
         fromNeighborhood: formValues.fromNeighborhood.trim(),
+        toRegion: formValues.toRegion,
+        toDistrict: formValues.toDistrict,
         toNeighborhood: formValues.toNeighborhood.trim(),
-        description: formValues.description.trim(),
-        specialInstructions: formValues.specialInstructions.trim(),
-        senderName: formValues.senderName?.trim(),
-        senderPhone: formValues.senderPhone?.trim(),
-        receiverName: formValues.receiverName?.trim(),
-        receiverPhone: formValues.receiverPhone?.trim(),
+        truckType: formValues.truckType.trim(),
         weight: String(formValues.weight).trim(),
+        preferredPickupDate: formValues.preferredPickupDate,
+        description: formValues.description.trim(),
         submissionKey: submissionKey.current
       };
+      const instructions = formValues.specialInstructions?.trim();
+      if (instructions) payload.specialInstructions = instructions;
+
+      if (formValues.customerRole === "SENDER") {
+        payload.receiverName = formValues.receiverName.trim();
+        payload.receiverPhone = formValues.receiverPhone.trim();
+      } else {
+        payload.senderName = formValues.senderName.trim();
+        payload.senderPhone = formValues.senderPhone.trim();
+      }
+
       const request = await create.mutateAsync(payload);
       navigate("/customer/shipments", { state: { created: request.id } });
     } catch (err) {
-      setServerError(err.message);
+      const issueMessage = err.details?.issues?.[0]?.message || err.issues?.[0]?.message;
+      setServerError(issueMessage || err.message);
     }
   }
 
@@ -275,6 +294,15 @@ export function BookTruckPage() {
             )}
           </FormSection>
 
+          {!profileReady && (
+            <p className="rounded-lg bg-error/10 p-3 text-sm text-error">
+              Profile name/phone is missing or too short. Open{" "}
+              <a className="font-semibold underline" href="/customer/profile">
+                Profile
+              </a>{" "}
+              and save a phone with at least 7 digits, then try again.
+            </p>
+          )}
           {serverError && <p className="rounded-lg bg-error/10 p-3 text-sm text-error">{serverError}</p>}
           <Button disabled={isSubmitting || create.isPending || !profileReady}>
             {create.isPending ? "Submitting…" : "Submit Cargo Request"}
@@ -318,10 +346,10 @@ function ContactFields({ party, register, errors }) {
         <input
           className="stitch-input"
           type="tel"
-          placeholder="+252 61 2345678"
+          placeholder="0612345678 or any 7+ digit phone"
           {...register(`${key}Phone`, {
             required: `${party} phone is required`,
-            validate: (value) => SOMALI_PHONE_PATTERN.test(value.replace(/[\s-]/g, "")) || "Enter a valid Somali phone number"
+            validate: (value) => isValidPhone(value) || "Enter a phone number with at least 7 digits"
           })}
         />
       </Field>

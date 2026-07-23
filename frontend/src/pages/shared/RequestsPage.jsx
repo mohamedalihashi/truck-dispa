@@ -37,7 +37,7 @@ export function RequestsPage() {
   const { search } = useDashboardSearch();
   const showCreate = user.role === "admin" || user.role === "dispatcher";
   const canQuote = ["driver", "dispatcher", "admin"].includes(user.role);
-  const canAssign = user.role === "admin";
+  const canAssign = user.role === "admin" || user.role === "dispatcher";
   const canEdit = user.role === "admin" || user.role === "dispatcher";
   const { data, isLoading } = useCargoRequests({ status: status || undefined, search: search || undefined });
   const { data: summary } = useCargoRequestSummary();
@@ -89,8 +89,7 @@ export function RequestsPage() {
     defaultValues: {
       quotedPrice: "",
       quotedEstimatedTime: "",
-      quoteNotes: "",
-      driverId: ""
+      quoteNotes: ""
     }
   });
 
@@ -100,8 +99,7 @@ export function RequestsPage() {
     resetQuote({
       quotedPrice: row.quotedPrice != null ? String(row.quotedPrice) : "",
       quotedEstimatedTime: row.quotedEstimatedTime || "",
-      quoteNotes: row.quoteNotes || "",
-      driverId: row.driverId || ""
+      quoteNotes: row.quoteNotes || ""
     });
   }
 
@@ -138,8 +136,7 @@ export function RequestsPage() {
         payload: {
           quotedPrice: Number(values.quotedPrice),
           quotedEstimatedTime: values.quotedEstimatedTime,
-          quoteNotes: values.quoteNotes,
-          driverId: user.role === "driver" ? undefined : values.driverId
+          quoteNotes: values.quoteNotes
         }
       });
       setQuoting(null);
@@ -200,7 +197,7 @@ export function RequestsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Cargo Requests"
-        subtitle="Send quotations, collect the 30% deposit, transport cargo, confirm delivery, then collect the 70% balance."
+        subtitle="Send quotations, assign drivers, track cargo, confirm delivery, and collect payment."
         actions={
           showCreate ? (
             <Button onClick={() => { setCreating(true); setError(""); }}>
@@ -323,18 +320,6 @@ export function RequestsPage() {
               placeholder="Estimated delivery time (e.g. 2 days, 48 hours)"
               {...registerQuote("quotedEstimatedTime", { required: true })}
             />
-            {user.role !== "driver" && (
-              <select className="stitch-input w-full" {...registerQuote("driverId", { required: true })}>
-                <option value="">Select available driver / truck</option>
-                {fleet
-                  .filter((truck) => truck.status === "Available" && normalizeTruckType(truck.truckType || truck.type) === normalizeTruckType(quoting.truckType))
-                  .map((truck) => (
-                    <option key={truck.id} value={truck.driverId}>
-                      {truck.driver} · {truck.truckNumber} · {truck.plateNumber}
-                    </option>
-                  ))}
-              </select>
-            )}
             <textarea
               className="stitch-input min-h-20 w-full"
               placeholder="Quote notes (optional)"
@@ -366,12 +351,31 @@ export function RequestsPage() {
           </p>
           <select className="mb-4 w-full stitch-input" value={truckId} onChange={(e) => setTruckId(e.target.value)}>
             <option value="">Select a matching truck</option>
-            {assignmentFleet.map((truck) => (
-              <option key={truck.id} value={truck.id}>
-                {truck.truckNumber} — {truck.driver} ({truck.status})
-              </option>
-            ))}
+            {assignmentFleet.map((truck) => {
+              const matches = normalizeTruckType(truck.truckType || truck.type) === normalizeTruckType(selected.truckType);
+              return (
+                <option key={truck.id} value={truck.id}>
+                  {matches ? "✓ " : ""}
+                  {truck.truckNumber} — {truck.driver || "No driver"} · {truck.truckType || truck.type} ({truck.status})
+                </option>
+              );
+            })}
           </select>
+          {!fleet.length ? (
+            <p className="mb-3 text-sm text-error">
+              No trucks loaded. Check that verified drivers with trucks exist, then refresh the page.
+            </p>
+          ) : null}
+          {fleet.length > 0 &&
+          !assignmentFleet.some(
+            (truck) =>
+              truck.status === "Available" &&
+              normalizeTruckType(truck.truckType || truck.type) === normalizeTruckType(selected.truckType)
+          ) ? (
+            <p className="mb-3 text-sm text-amber-800 dark:text-amber-200">
+              No available truck currently matches type &quot;{selected.truckType}&quot;. You can still pick another truck below, or register a matching truck first.
+            </p>
+          ) : null}
           {truckId ? (
             <p className="mb-3 text-sm text-on-surface-variant">
               Selected type: {fleet.find((truck) => truck.id === truckId)?.truckType || "Unknown"}

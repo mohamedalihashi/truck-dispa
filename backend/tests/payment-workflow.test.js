@@ -33,4 +33,28 @@ describe("30/70 cargo payment workflow", () => {
       canPay: false,
     });
   });
+
+  it("rounds deposit to cents for odd totals", () => {
+    expect(paymentSchedule({ amount: 999 })).toMatchObject({
+      depositAmount: 299.7,
+      requiredAmount: 299.7,
+      stage: "Deposit Due",
+      canPay: true,
+    });
+  });
+
+  it("treats near-full payment as completed (float tolerance)", () => {
+    expect(paymentSchedule({ amount: 100, amountPaid: 99.995 })).toMatchObject({
+      requiredAmount: 0,
+      stage: "Completed",
+      canPay: false,
+    });
+  });
+
+  it("keeps balance locked when deposit paid without confirmation date", () => {
+    const schedule = paymentSchedule({ amount: 500, amountPaid: 150 });
+    expect(schedule.canPay).toBe(false);
+    expect(schedule.requiredAmount).toBe(0);
+    expect(schedule.stage).toBe("Awaiting Delivery Confirmation");
+  });
 });

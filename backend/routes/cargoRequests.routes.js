@@ -8,16 +8,17 @@ import {
   isValidSomaliaDistrict,
   isValidSomaliaRegion
 } from "../lib/somaliaLocations.js";
-import { normalizeSomaliPhone } from "../lib/phone.js";
+import { normalizeSomaliPhone, isValidBookingPhone } from "../lib/phone.js";
 import { sendBookingCreatedSms, sendCargoRequestEventSms } from "../services/cargoSmsService.js";
 
 const router = Router();
 
 const requiredName = z.string().trim().min(1, "Name cannot be empty");
-const somaliPhone = z.string().trim().refine(
-  (value) => /^(?:(?:\+|00)?252|0)?(?:6[1-9]|7\d|9\d)\d{7}$/.test(value.replace(/[\s-]/g, "")),
-  "Enter a valid Somali phone number"
-);
+const bookingPhone = z.string().trim().refine(isValidBookingPhone, "Enter a valid phone number (at least 7 digits)");
+const emptyToUndefined = (value) => (typeof value === "string" && value.trim() === "" ? undefined : value);
+const optionalName = z.preprocess(emptyToUndefined, requiredName.optional());
+const optionalPhone = z.preprocess(emptyToUndefined, bookingPhone.optional());
+const optionalText = z.preprocess(emptyToUndefined, z.string().trim().min(1).optional());
 
 const cargoRequestFields = z.object({
   pickup: z.string().trim().min(1).optional(),
@@ -31,24 +32,33 @@ const cargoRequestFields = z.object({
   receiver: z.string().optional(),
   sender: z.string().optional(),
   customerRole: z.enum(["SENDER", "RECEIVER"]).optional(),
-  senderName: requiredName.optional(),
-  senderPhone: somaliPhone.optional(),
-  receiverName: requiredName.optional(),
-  receiverPhone: somaliPhone.optional(),
-  fromRegion: z.string().trim().optional(),
-  fromDistrict: z.string().trim().optional(),
-  fromNeighborhood: z.string().trim().min(1, "From neighborhood is required").optional(),
-  toRegion: z.string().trim().optional(),
-  toDistrict: z.string().trim().optional(),
-  toNeighborhood: z.string().trim().min(1, "To neighborhood is required").optional(),
-  specialInstructions: z.string().trim().optional(),
-  preferredPickupDate: z.string().optional().refine((value) => {
-    if (!value) return true;
-    const selected = new Date(`${value}T00:00:00`);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return !Number.isNaN(selected.getTime()) && selected >= today;
-  }, "Preferred pickup date cannot be in the past"),
+  senderName: optionalName,
+  senderPhone: optionalPhone,
+  receiverName: optionalName,
+  receiverPhone: optionalPhone,
+  fromRegion: optionalText,
+  fromDistrict: optionalText,
+  fromNeighborhood: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(1, "From neighborhood is required").optional()
+  ),
+  toRegion: optionalText,
+  toDistrict: optionalText,
+  toNeighborhood: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(1, "To neighborhood is required").optional()
+  ),
+  specialInstructions: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  preferredPickupDate: z.preprocess(
+    emptyToUndefined,
+    z.string().optional().refine((value) => {
+      if (!value) return true;
+      const selected = new Date(`${value}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return !Number.isNaN(selected.getTime()) && selected >= today;
+    }, "Preferred pickup date cannot be in the past")
+  ),
   submissionKey: z.string().uuid().optional(),
   customerId: z.string().uuid().optional()
 });
@@ -171,8 +181,8 @@ router.post("/", requireRole("customer", "admin", "dispatcher"), validate(cargoR
     if (req.user.role === "customer" && !req.body.customerRole) {
       return res.status(400).json({ message: "Customer role is required" });
     }
-    if (req.body.customerRole && (!customer.name?.trim() || !somaliPhone.safeParse(customer.phone).success)) {
-      return res.status(400).json({ message: "Your profile name and Somali phone number are required before booking" });
+    if (req.body.customerRole && (!customer.name?.trim() || !bookingPhone.safeParse(customer.phone).success)) {
+      return res.status(400).json({ message: "Your profile name and phone number are required before booking" });
     }
     const bookingDetails = req.body.customerRole
       ? {
@@ -206,8 +216,8 @@ router.patch("/:id", requireRole("customer", "admin", "dispatcher"), validate(up
     let payload = req.body;
     if (req.user.role === "customer" && req.body.customerRole) {
       const customer = await db.findUserById(req.user.sub);
-      if (!customer?.name?.trim() || !somaliPhone.safeParse(customer?.phone).success) {
-        return res.status(400).json({ message: "Your profile name and Somali phone number are required before booking" });
+      if (!customer?.name?.trim() || !bookingPhone.safeParse(customer?.phone).success) {
+        return res.status(400).json({ message: "Your profile name and phone number are required before booking" });
       }
       payload = {
         ...req.body,
@@ -238,7 +248,7 @@ router.patch(
         quotedPrice: req.body.quotedPrice,
         quotedEstimatedTime: req.body.quotedEstimatedTime,
         quoteNotes: req.body.quoteNotes,
-        driverId: req.user.role === "driver" ? req.user.sub : req.body.driverId,
+        driverId: req.user.role === "driver" ? req.user.sub : undefined,
         dispatcherId: ["dispatcher", "admin"].includes(req.user.role) ? req.user.sub : undefined
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
@@ -253,9 +263,11 @@ router.patch(
 
 router.post(
   "/:id/quote/accept",
-  requireRole("customer"),
   async (req, res, next) => {
     try {
+      if (req.user.role !== "customer") {
+        return res.status(403).json({ message: "Only the booking customer can accept a quotation" });
+      }
       const request = await db.acceptCargoQuote(req.params.id, { customerId: req.user.sub });
       if (!request) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("quote.accepted", request);
@@ -269,10 +281,12 @@ router.post(
 
 router.post(
   "/:id/quote/reject",
-  requireRole("customer"),
   validate(rejectQuoteSchema),
   async (req, res, next) => {
     try {
+      if (req.user.role !== "customer") {
+        return res.status(403).json({ message: "Only the booking customer can reject a quotation" });
+      }
       const request = await db.rejectCargoQuote(req.params.id, {
         customerId: req.user.sub,
         note: req.body.note
@@ -288,14 +302,14 @@ router.post(
 
 router.patch(
   "/:id/assign",
-  requireRole("admin"),
+  requireRole("admin", "dispatcher"),
   validate(assignSchema),
   async (req, res, next) => {
     try {
       const result = await db.assignCargoRequest(req.params.id, {
         driverId: req.body.driverId,
         truckId: req.body.truckId,
-        dispatcherId: req.body.dispatcherId
+        dispatcherId: req.user.role === "dispatcher" ? req.user.sub : req.body.dispatcherId || req.user.sub
       });
       if (!result) return res.status(404).json({ message: "Cargo request not found" });
       req.app.get("io").emit("driver.assigned", result.request);

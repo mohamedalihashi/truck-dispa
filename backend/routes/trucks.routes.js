@@ -18,9 +18,9 @@ const truckSchema = z.object({
 
 router.use(requireAuth);
 router.use(requirePasswordChanged);
-router.use(requirePermission("trucks"));
 
-router.get("/", async (req, res, next) => {
+// Dispatchers need truck lists to assign drivers even without full fleet admin access.
+router.get("/", requireRole("admin", "dispatcher", "driver"), async (req, res, next) => {
   try {
     const result = await db.listTrucks({
       status: req.query.status,
@@ -34,13 +34,15 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-router.get("/summary", async (_req, res, next) => {
+router.get("/summary", requireRole("admin", "dispatcher", "driver"), async (_req, res, next) => {
   try {
     res.json(await db.truckSummary());
   } catch (error) {
     next(error);
   }
 });
+
+router.use(requirePermission("trucks"));
 
 router.get("/types", async (_req, res, next) => {
   try {

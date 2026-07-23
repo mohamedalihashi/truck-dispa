@@ -37,6 +37,7 @@ io.on("connection", (socket) => {
 
 server.listen(port, () => {
   console.log(`TruckDispatch API running on http://127.0.0.1:${port}`);
+  console.log(`Health + integrations: http://127.0.0.1:${port}/api/health`);
 });
 
 const smsRetryTimer = !process.env.VERCEL

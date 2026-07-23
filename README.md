@@ -198,6 +198,20 @@ npm run dev:frontend
 | `SMTP_USER` | Gmail address | `your@gmail.com` |
 | `SMTP_PASS` | Gmail App Password (16 chars) | `xxxx xxxx xxxx xxxx` |
 | `SMTP_FROM` | From header | `TruckDispatch <your@gmail.com>` |
+| `AUTH_OTP_ENABLED` | Require email OTP on register/login | `true` |
+| `WAAFI_MERCHANT_UID` | WaafiPay merchant UID | from Waafi dashboard |
+| `WAAFI_API_USER_ID` | WaafiPay API user id | |
+| `WAAFI_API_KEY` | WaafiPay API key | |
+| `WAAFI_DEV_MOCK` | Mock payments locally (`true`/`false`) | `false` |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name (POD/avatars) | from Cloudinary dashboard |
+| `CLOUDINARY_API_KEY` | Cloudinary API key | |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret | |
+| `SMS_API_URL` | Infobip-style SMS base URL | `https://xxxxx.api.infobip.com` |
+| `SMS_API_KEY` | SMS provider API key | |
+| `SMS_SENDER_ID` | SMS sender id | `ServiceSMS` |
+| `APP_PUBLIC_URL` | Public frontend URL (feedback links) | `http://localhost:5173` |
+
+Check live status anytime: `GET /api/health` → `integrations` + `missing`.
 
 ### Frontend (`frontend/.env`)
 

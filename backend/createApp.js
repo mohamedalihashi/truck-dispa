@@ -16,6 +16,43 @@ import paymentRoutes from "./routes/payments.routes.js";
 import earningsRoutes from "./routes/earnings.routes.js";
 import feedbackRoutes from "./routes/feedback.routes.js";
 import { auditContextMiddleware } from "./lib/auditContext.js";
+import { isCloudinaryConfigured } from "./services/cloudinaryService.js";
+import { getWaafiPublicConfig } from "./services/waafiPayService.js";
+import { isSmsConfigured } from "./services/smsService.js";
+
+function looksLikePlaceholder(value = "") {
+  return /your[_-]?|replace-with|xxxxx|changeme|example|<|>/i.test(String(value || ""));
+}
+
+function getIntegrationsStatus() {
+  const waafi = getWaafiPublicConfig();
+  const smtpUser = process.env.SMTP_USER || "";
+  const smtpPass = process.env.SMTP_PASS || "";
+  const emailReady =
+    process.env.EMAIL_DEV_MODE === "true" ||
+    (Boolean(smtpUser && smtpPass) && !looksLikePlaceholder(smtpUser) && !looksLikePlaceholder(smtpPass));
+
+  return {
+    database: true,
+    cloudinary: {
+      configured: isCloudinaryConfigured(),
+      fallback: isCloudinaryConfigured() ? "cloudinary" : "local-uploads"
+    },
+    waafiPay: {
+      configured: waafi.enabled,
+      currency: waafi.currency,
+      devMock: waafi.devMock
+    },
+    sms: {
+      configured: isSmsConfigured()
+    },
+    email: {
+      configured: emailReady,
+      otpEnabled: process.env.AUTH_OTP_ENABLED !== "false",
+      devMode: process.env.EMAIL_DEV_MODE === "true"
+    }
+  };
+}
 
 export function createNoopIo() {
   const noop = () => {};
@@ -70,17 +107,28 @@ export function createApp({ io } = {}) {
   }
 
   app.get("/api/health", async (_req, res) => {
+    const integrations = getIntegrationsStatus();
     try {
       const stats = await db.dashboardStats();
+      const missing = Object.entries(integrations)
+        .filter(([, value]) => value && typeof value === "object" && value.configured === false)
+        .map(([key]) => key);
+
       res.json({
-        status: "ok",
+        status: missing.length ? "degraded" : "ok",
         database: "postgresql",
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
+        integrations,
+        missing,
         stats
       });
     } catch (error) {
-      res.status(500).json({ status: "error", message: error.message });
+      res.status(500).json({
+        status: "error",
+        message: error.message,
+        integrations: { ...integrations, database: false }
+      });
     }
   });
 

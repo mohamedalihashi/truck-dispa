@@ -10,7 +10,7 @@ function looksLikePlaceholder(value = "") {
   );
 }
 
-function hasUsableCloudinaryConfig() {
+export function isCloudinaryConfigured() {
   const { CLOUDINARY_URL, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
   if (CLOUDINARY_URL && !looksLikePlaceholder(CLOUDINARY_URL)) return true;
   return Boolean(
@@ -21,6 +21,10 @@ function hasUsableCloudinaryConfig() {
       !looksLikePlaceholder(CLOUDINARY_API_KEY) &&
       !looksLikePlaceholder(CLOUDINARY_API_SECRET)
   );
+}
+
+function hasUsableCloudinaryConfig() {
+  return isCloudinaryConfigured();
 }
 
 function configure() {

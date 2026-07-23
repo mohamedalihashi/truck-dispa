@@ -61,7 +61,12 @@ export function resolveTripMapPosition(trip) {
     const lat = Number(trip.lastLocation.lat);
     const lng = Number(trip.lastLocation.lng);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { lat, lng, live: true };
+      const updatedAt = trip.lastLocation.updatedAt
+        ? new Date(trip.lastLocation.updatedAt).getTime()
+        : 0;
+      // Treat location as live GPS only when a recent driver update exists.
+      const live = Boolean(updatedAt) && Date.now() - updatedAt < 10 * 60 * 1000;
+      return { lat, lng, live };
     }
   }
 

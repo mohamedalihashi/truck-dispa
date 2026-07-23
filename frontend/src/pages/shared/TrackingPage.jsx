@@ -10,7 +10,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { LIVE_MAP_STATUSES, nextTripStatus, roleHome } from "../../utils/helpers";
 import { matchSomaliaCity, resolveTripMapPosition } from "../../utils/geo";
 
-const LIVE_POLL_MS = 15_000;
+const LIVE_POLL_MS = 5_000;
 
 export function TrackingPage() {
   const { user } = useAuth();
@@ -120,9 +120,11 @@ export function TrackingPage() {
                     {trip.pickup} → {trip.destination}
                   </p>
                   <p className="mt-2 text-xs text-on-primary-container/80">
-                    {trip.lastLocation
-                      ? `${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
-                      : `${trip.pickup} area (estimated)`}
+                    {resolveTripMapPosition(trip).live
+                      ? `Live GPS · ${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
+                      : trip.lastLocation
+                        ? `Last GPS · ${Number(trip.lastLocation.lat).toFixed(4)}, ${Number(trip.lastLocation.lng).toFixed(4)}`
+                        : `${trip.pickup} area (estimated — waiting for driver GPS)`}
                   </p>
                 </button>
               ))}

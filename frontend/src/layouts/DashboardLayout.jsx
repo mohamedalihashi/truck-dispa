@@ -233,6 +233,9 @@ export function DashboardLayout() {
               GPS live · {gps.trackingTripId}
             </p>
           ) : null}
+          {user.role === "driver" && gps.error ? (
+            <p className="mt-2 text-center text-[10px] font-medium text-amber-300">{gps.error}</p>
+          ) : null}
         </div>
       </aside>
 
@@ -300,6 +303,17 @@ export function DashboardLayout() {
 
       <main className="min-h-screen px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-[calc(4.5rem+env(safe-area-inset-top))] lg:ml-[248px] lg:px-6 lg:pt-[5.5rem]">
         <div className="mx-auto max-w-[1400px]">
+          {user.role === "driver" && gps.trackingTripId && gps.error ? (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+              Live tracking needs location access on this phone. {gps.error}
+            </div>
+          ) : null}
+          {user.role === "driver" && gps.active && !gps.error ? (
+            <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100">
+              Sharing live GPS for {gps.trackingTripId}
+              {gps.lastSentAt ? ` · last sent ${gps.lastSentAt.toLocaleTimeString()}` : ""}. Keep this page open while driving.
+            </div>
+          ) : null}
           <Outlet context={{ search: debouncedSearch }} />
         </div>
       </main>

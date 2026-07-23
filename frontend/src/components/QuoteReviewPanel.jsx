@@ -47,11 +47,11 @@ export function QuoteReviewPanel({ request, onAccept, onReject, loading, error }
           </label>
           {error ? <p className="mt-2 text-sm text-error">{error}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={() => onAccept(request.id)} disabled={loading}>
+            <Button type="button" onClick={() => onAccept(request.id)} disabled={loading}>
               <Check size={16} />
               Accept quote
             </Button>
-            <Button variant="secondary" onClick={() => onReject(request.id, note)} disabled={loading}>
+            <Button type="button" variant="secondary" onClick={() => onReject(request.id, note)} disabled={loading}>
               <X size={16} />
               Reject quote
             </Button>

@@ -195,7 +195,9 @@ router.post("/:id/proof", requireRole("driver"), upload.single("proof"), async (
   }
 });
 
-router.post("/:id/feedback", requireRole("customer"), validate(feedbackSchema), async (req, res, next) => {
+// Ownership (trip.customerId) is the source of truth — not JWT/role alone —
+// so a stale session after a role change can still rate their own delivery.
+router.post("/:id/feedback", validate(feedbackSchema), async (req, res, next) => {
   try {
     const trip = await db.submitTripFeedback(req.params.id, req.user.sub, req.body);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -208,7 +210,7 @@ router.post("/:id/feedback", requireRole("customer"), validate(feedbackSchema), 
   }
 });
 
-router.post("/:id/confirm-delivery", requireRole("customer"), async (req, res, next) => {
+router.post("/:id/confirm-delivery", async (req, res, next) => {
   try {
     const trip = await db.confirmTripDelivery(req.params.id, req.user.sub);
     if (!trip) return res.status(404).json({ message: "Trip not found" });

@@ -52,7 +52,7 @@ export function estimateEta(fromLat, fromLng, destinationText) {
   };
 }
 
-export function shouldRecordPoint(lastLat, lastLng, lat, lng, minKm = 0.03) {
+export function shouldRecordPoint(lastLat, lastLng, lat, lng, minKm = 0.015) {
   if (lastLat == null || lastLng == null) return true;
   return haversineKm(lastLat, lastLng, lat, lng) >= minKm;
 }

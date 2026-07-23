@@ -27,12 +27,37 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ message: "Authentication required" });
   }
 
-  try {
-    req.user = jwt.verify(token, effectiveJwtSecret);
-    next();
-  } catch {
-    res.status(401).json({ message: "Invalid or expired token" });
-  }
+  Promise.resolve()
+    .then(async () => {
+      const payload = jwt.verify(token, effectiveJwtSecret);
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: {
+          id: true,
+          role: true,
+          email: true,
+          status: true,
+          mustChangePassword: true,
+          isSuperAdmin: true
+        }
+      });
+      if (!user) {
+        res.status(401).json({ message: "Authentication required" });
+        return;
+      }
+      // Always trust the database role so stale JWT claims cannot block customer actions.
+      req.user = {
+        sub: user.id,
+        role: user.role,
+        email: user.email,
+        mcp: user.mustChangePassword ? true : undefined,
+        isSuperAdmin: Boolean(user.isSuperAdmin)
+      };
+      next();
+    })
+    .catch(() => {
+      res.status(401).json({ message: "Invalid or expired token" });
+    });
 }
 
 /** Block API access until the user sets a new password (admin-created accounts). */
@@ -49,7 +74,11 @@ export function requirePasswordChanged(req, res, next) {
 export function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ message: "Insufficient permissions" });
+      return res.status(403).json({
+        message: `Insufficient permissions${req.user?.role ? ` for role "${req.user.role}"` : ""}`,
+        requiredRoles: roles,
+        currentRole: req.user?.role || null
+      });
     }
     next();
   };
@@ -74,6 +103,10 @@ export async function requireSuperAdmin(req, res, next) {
 export function requirePermission(permission) {
   return async (req, res, next) => {
     try {
+      if (req.user?.isSuperAdmin) {
+        req.isSuperAdmin = true;
+        return next();
+      }
       const user = await prisma.user.findUnique({
         where: { id: req.user?.sub },
         select: { role: true, isSuperAdmin: true },
